@@ -1,0 +1,79 @@
+# Simulação ponta a ponta do Backify Bridge.
+#
+#   db        = "Postgres do cliente" (só localhost, sem porta pública)
+#   mock-cp   = control plane FALSO (enroll + heartbeat com config fixa)
+#   chisel    = chisel-server (o túnel), com authfile por-agent
+#   bridge    = o agent, instalado "no servidor do cliente" (compartilha a rede do db)
+#   consumer  = faz o papel do worker: alcança o Postgres do cliente ATRAVÉS do túnel
+#
+# Rodar:  docker compose -f sim/docker-compose.yml up --build \
+#           --abort-on-container-exit --exit-code-from consumer
+name: bridge-sim
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: simuser
+      POSTGRES_PASSWORD: simpw
+      POSTGRES_DB: simdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simuser -d simdb"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  mock-cp:
+    build:
+      context: ./mock-cp
+
+  chisel:
+    image: jpillora/chisel:1.11.8
+    command:
+      - server
+      - --reverse
+      - --keepalive=25s
+      - --authfile=/etc/chisel/users.json
+      - --host=0.0.0.0
+      - --port=8080
+    volumes:
+      - ./authfile:/etc/chisel:ro
+    ports:
+      # Publica a porta reversa p/ inspeção externa (o consumer não precisa disto).
+      - "40001:40001"
+
+  bridge:
+    build:
+      context: ..
+      dockerfile: sim/bridge.Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      mock-cp:
+        condition: service_started
+      chisel:
+        condition: service_started
+    # Compartilha a pilha de rede do db: assim localhost:5432 no bridge = o
+    # Postgres do "cliente" (como se estivessem na mesma máquina).
+    network_mode: "service:db"
+
+  consumer:
+    image: postgres:16-alpine
+    depends_on:
+      bridge:
+        condition: service_started
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "[consumer] esperando o tunel subir (chisel:40001 -> bridge -> db)..."
+        for i in $(seq 1 30); do
+          if pg_isready -h chisel -p 40001 -U simuser >/dev/null 2>&1; then
+            echo "[consumer] tunel ativo."
+            break
+          fi
+          sleep 2
+        done
+        echo "[consumer] consultando o Postgres do cliente ATRAVES do tunel:"
+        PGPASSWORD=simpw psql -h chisel -p 40001 -U simuser -d simdb \
+          -c "select 'TUNNEL OK' as status, current_database(), count(*) as tabelas from pg_tables;"

@@ -1,0 +1,18 @@
+# Binários
+/backify-bridge
+/dist/
+*.exe
+
+# Go
+/vendor/
+*.test
+*.out
+
+# Config local de dev (contém segredo do agent)
+bridge.json
+*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
