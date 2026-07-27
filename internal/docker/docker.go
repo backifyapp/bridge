@@ -113,6 +113,15 @@ func Available(ctx context.Context) bool {
 	return err == nil
 }
 
+// Version devolve a versão do Docker server (vazio se indisponível).
+func Version(ctx context.Context) string {
+	out, err := run(ctx, "version", "--format", "{{.Server.Version}}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
 // ListVolumes lista os volumes nomeados.
 func ListVolumes(ctx context.Context) ([]Volume, error) {
 	out, err := run(ctx, "volume", "ls", "--format", "{{.Name}}")

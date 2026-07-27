@@ -113,9 +113,9 @@ func Enroll(ctx context.Context, baseURL, token, hostname, version string) (agen
 	return res.AgentID, res.HMACSecret, nil
 }
 
-// Heartbeat reporta estado (versão/hostname) e recebe a config a aplicar.
-func (c *Client) Heartbeat(ctx context.Context, version, hostname string) (*AgentConfig, error) {
-	payload, _ := json.Marshal(map[string]string{"version": version, "hostname": hostname})
+// Heartbeat reporta estado (versão/hostname + inventário) e recebe a config a aplicar.
+func (c *Client) Heartbeat(ctx context.Context, version, hostname string, systemInfo any) (*AgentConfig, error) {
+	payload, _ := json.Marshal(map[string]any{"version": version, "hostname": hostname, "systemInfo": systemInfo})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/agents/heartbeat", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err

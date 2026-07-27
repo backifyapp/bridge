@@ -13,7 +13,9 @@ import (
 
 	"github.com/backifyapp/bridge/internal/api"
 	"github.com/backifyapp/bridge/internal/config"
+	"github.com/backifyapp/bridge/internal/docker"
 	"github.com/backifyapp/bridge/internal/dockerhttp"
+	"github.com/backifyapp/bridge/internal/sysinfo"
 	"github.com/backifyapp/bridge/internal/transport"
 )
 
@@ -35,8 +37,13 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 
 	dockerHelperUp := false
 	for {
+		// Inventário de frota (barato); versão do Docker só se estiver em modo docker.
+		si := sysinfo.Collect()
+		if dockerHelperUp {
+			si.DockerVersion = docker.Version(ctx)
+		}
 		// Heartbeat imediato na 1ª volta, depois no intervalo.
-		if acfg, err := client.Heartbeat(ctx, version, hostname); err != nil {
+		if acfg, err := client.Heartbeat(ctx, version, hostname, si); err != nil {
 			log.Printf("[agent] heartbeat falhou: %v", err)
 		} else {
 			if err := t.Sync(ctx, acfg); err != nil {
