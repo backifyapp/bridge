@@ -60,6 +60,27 @@ backify-bridge status
 Todas as chamadas à API (menos o enroll) são assinadas por **HMAC-SHA256** — o
 segredo **nunca trafega**, só assina. Veja [`internal/sign`](internal/sign).
 
+## Modo Docker (volumes e containers)
+
+Além de bancos/arquivos, o Bridge faz backup/restore de **volumes** e
+**containers** Docker (capability opt-in `Docker` no painel). O agent sobe um
+helper HTTP local (só pelo túnel, HMAC) que exporta o volume como `tar.gz` (via
+container efêmero `:ro`) e lê a config do container (`docker inspect`); o restic
+roda no worker. Restore recria volume/container com **nome novo** por padrão.
+
+Precisa do socket do Docker — use a imagem oficial:
+
+```sh
+docker run -d --name backify-bridge \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /etc/backify-bridge:/etc/backify-bridge \
+  backifyapp/bridge
+```
+
+> ⚠️ Acesso ao socket do Docker é **root-equivalente** no host. `docker inspect`
+> pode expor segredos (env vars) — vão para o snapshot cifrado. Habilite só onde
+> você confia no Backify. Banco em container: prefira a origem de banco pelo túnel.
+
 ## Transporte
 
 O transporte do túnel fica atrás da interface [`transport.Transport`](internal/transport/transport.go).
@@ -92,6 +113,9 @@ control plane e informado no heartbeat.
 go test ./...      # inclui o vetor que prova a compatibilidade HMAC com o backend
 go build ./...
 go run ./cmd/backify-bridge status
+
+# Teste de aceitação do Docker (roundtrip real de volume) — num host com docker:
+go test -tags e2e ./internal/docker
 ```
 
 Config de dev em outro caminho: `BACKIFY_BRIDGE_CONFIG=./bridge.json`.
