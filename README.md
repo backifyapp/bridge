@@ -48,6 +48,16 @@ sudo systemctl enable --now backify-bridge
 backify-bridge status
 ```
 
+### Atualizar
+
+```sh
+sudo backify-bridge update && sudo systemctl restart backify-bridge
+```
+
+Baixa a última release, **valida o SHA-256** e substitui o binário. As mudanças
+de cada versão estão no [CHANGELOG](CHANGELOG.md); falhas de segurança, no
+[SECURITY.md](SECURITY.md).
+
 ## Como funciona
 
 1. **Enroll** — o Bridge troca o enrollment token de uso único por uma identidade

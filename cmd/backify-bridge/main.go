@@ -17,6 +17,7 @@ import (
 	"github.com/backifyapp/bridge/internal/api"
 	"github.com/backifyapp/bridge/internal/config"
 	"github.com/backifyapp/bridge/internal/transport"
+	"github.com/backifyapp/bridge/internal/updater"
 )
 
 // version é injetada no build: -ldflags "-X main.version=v1.2.3".
@@ -36,6 +37,8 @@ func main() {
 		cmdRun(os.Args[2:])
 	case "status":
 		cmdStatus(os.Args[2:])
+	case "update":
+		cmdUpdate()
 	case "version", "-v", "--version":
 		fmt.Println("backify-bridge", version)
 	default:
@@ -51,6 +54,7 @@ Uso:
   backify-bridge enroll --token <TOKEN> [--url <API_URL>]   registra este servidor no Backify
   backify-bridge run                                        roda o daemon (mantém o túnel)
   backify-bridge status                                     mostra o estado do registro
+  backify-bridge update                                     atualiza para a última versão
   backify-bridge version                                    versão do binário
 `)
 }
@@ -103,6 +107,19 @@ func cmdRun(args []string) {
 		fmt.Fprintln(os.Stderr, "agent parou:", err)
 		os.Exit(1)
 	}
+}
+
+func cmdUpdate() {
+	tag, updated, err := updater.Run(version)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "falha ao atualizar:", err)
+		os.Exit(1)
+	}
+	if !updated {
+		fmt.Printf("Já está na última versão (%s).\n", tag)
+		return
+	}
+	fmt.Printf("Atualizado para %s. Reinicie o serviço:\n  sudo systemctl restart backify-bridge\n", tag)
 }
 
 func cmdStatus(args []string) {
