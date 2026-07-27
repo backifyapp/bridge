@@ -6,12 +6,14 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/backifyapp/bridge/internal/api"
 	"github.com/backifyapp/bridge/internal/config"
+	"github.com/backifyapp/bridge/internal/dockerhttp"
 	"github.com/backifyapp/bridge/internal/transport"
 )
 
@@ -31,12 +33,28 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 	tick := time.NewTicker(heartbeatInterval)
 	defer tick.Stop()
 
+	dockerHelperUp := false
 	for {
 		// Heartbeat imediato na 1ª volta, depois no intervalo.
 		if acfg, err := client.Heartbeat(ctx, version, hostname); err != nil {
 			log.Printf("[agent] heartbeat falhou: %v", err)
-		} else if err := t.Sync(ctx, acfg); err != nil {
-			log.Printf("[agent] sync do transport falhou: %v", err)
+		} else {
+			if err := t.Sync(ctx, acfg); err != nil {
+				log.Printf("[agent] sync do transport falhou: %v", err)
+			}
+			// Capability Docker: sobe o helper HTTP local (uma vez) na porta do serviço.
+			if !dockerHelperUp {
+				if svc := findDockerService(acfg.Services); svc != nil {
+					dockerHelperUp = true
+					addr := fmt.Sprintf("127.0.0.1:%d", svc.LocalPort)
+					go func() {
+						log.Printf("[agent] helper docker ouvindo em %s", addr)
+						if err := dockerhttp.Serve(ctx, addr, cfg.HMACSecret); err != nil {
+							log.Printf("[agent] helper docker parou: %v", err)
+						}
+					}()
+				}
+			}
 		}
 
 		select {
@@ -45,4 +63,14 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 		case <-tick.C:
 		}
 	}
+}
+
+// findDockerService devolve o serviço com a capability DOCKER, se houver.
+func findDockerService(services []api.Service) *api.Service {
+	for i := range services {
+		if services[i].Type == "DOCKER" {
+			return &services[i]
+		}
+	}
+	return nil
 }
