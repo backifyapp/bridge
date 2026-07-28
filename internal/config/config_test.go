@@ -9,7 +9,7 @@ import (
 func TestSaveLoadRoundtripAndPerms(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "sub", "bridge.json")
-	in := &Config{APIURL: "https://api.backify.app", AgentID: "ag1", HMACSecret: "sek"}
+	in := &Config{APIURL: "https://srv.backify.app", AgentID: "ag1", HMACSecret: "sek"}
 
 	if err := Save(p, in); err != nil {
 		t.Fatal(err)

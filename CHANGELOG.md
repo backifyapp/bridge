@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-28
+
+### Fixed
+- **Enroll returned 401.** The default API URL pointed at `api.backify.app`
+  (the auth provider) instead of `srv.backify.app` (the Backify API), so every
+  enroll was rejected. Affects both the binary default and `install.sh`.
+  Existing installs can pass `--url https://srv.backify.app` or set
+  `BACKIFY_API_URL`.
+
 ## [0.2.0] — 2026-07-27
 
 ### Added
@@ -42,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/backifyapp/bridge/releases/tag/v0.2.1
 [0.2.0]: https://github.com/backifyapp/bridge/releases/tag/v0.2.0
 [0.1.0]: https://github.com/backifyapp/bridge/releases/tag/v0.1.0

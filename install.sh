@@ -9,7 +9,7 @@ set -eu
 
 REPO="backifyapp/bridge"
 BIN="/usr/local/bin/backify-bridge"
-API_URL="${BACKIFY_API_URL:-https://api.backify.app}"
+API_URL="${BACKIFY_API_URL:-https://srv.backify.app}"
 TOKEN=""
 
 while [ $# -gt 0 ]; do
