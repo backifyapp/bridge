@@ -14,7 +14,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=docker" -o /backify-bridge ./cmd/backify-bridge
+RUN CHISEL=$(go list -m -f '{{.Version}}' github.com/jpillora/chisel | sed 's/^v//') && \
+    CGO_ENABLED=0 go build -trimpath \
+      -ldflags "-s -w -X main.version=docker -X github.com/jpillora/chisel/share.BuildVersion=${CHISEL}" \
+      -o /backify-bridge ./cmd/backify-bridge
 
 FROM alpine:3
 RUN apk add --no-cache ca-certificates docker-cli
