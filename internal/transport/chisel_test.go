@@ -20,3 +20,27 @@ func TestBuildRemotesFormatsAndSkips(t *testing.T) {
 		t.Fatalf("remote=%q want=%q", got[0], want)
 	}
 }
+
+// A half-set CHISEL_TUNNEL_SERVER on the control plane used to reach the chisel
+// client as "wss://", which only failed there with "address wss::80: too many
+// colons in address" — after retrying forever. Reject it up front.
+func TestValidateServer(t *testing.T) {
+	valid := []string{
+		"wss://tunnel.backify.app",
+		"wss://tunnel.backify.app:443",
+		"https://tunnel.backify.app",
+		"tunnel.backify.app:8080",
+		"chisel:8080",
+	}
+	for _, s := range valid {
+		if err := validateServer(s); err != nil {
+			t.Errorf("validateServer(%q) = %v, want nil", s, err)
+		}
+	}
+	invalid := []string{"wss://", "https://", "://"}
+	for _, s := range invalid {
+		if err := validateServer(s); err == nil {
+			t.Errorf("validateServer(%q) = nil, want error", s)
+		}
+	}
+}

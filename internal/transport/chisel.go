@@ -3,6 +3,8 @@ package transport
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,24 @@ func buildRemotes(services []api.Service) []string {
 	return remotes
 }
 
+// validateServer rejects addresses that would only blow up inside the chisel
+// client — most importantly a scheme with no host ("wss://"), which the control
+// plane can hand out when its own env var is half-set.
+func validateServer(server string) error {
+	s := server
+	if !strings.Contains(s, "://") {
+		s = "wss://" + s // chisel accepts a bare host:port
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("no host")
+	}
+	return nil
+}
+
 // Sync (re)connects the Chisel client when the config changes; otherwise it's a no-op.
 func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error {
 	t.mu.Lock()
@@ -66,13 +86,32 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 		_ = t.client.Close()
 		t.client = nil
 	}
+	// While idle, key stays equal but client is nil, so Sync re-runs on every
+	// heartbeat — only log when something actually changed, not every 30s.
+	changed := key != t.current
 	t.current = key
 
-	// No server given, or nothing authorized yet: wait for the next heartbeat
-	// (the control plane provisions the tunnel in phase 2).
-	if cfg.Tunnel.Server == "" || len(remotes) == 0 {
+	// No server given, or nothing authorized yet: wait for the next heartbeat.
+	// This used to be silent, which made a misconfigured control plane look
+	// exactly like a healthy idle agent — say what is missing.
+	if cfg.Tunnel.Server == "" {
+		if changed {
+			log.Printf("[tunnel] idle: the control plane sent no tunnel address (check CHISEL_TUNNEL_SERVER on the API)")
+		}
 		return nil
 	}
+	if len(remotes) == 0 {
+		if changed {
+			log.Printf("[tunnel] idle: no service has a remote port assigned yet (%d authorized)", len(cfg.Services))
+		}
+		return nil
+	}
+	// A malformed address fails deep inside the chisel client with a cryptic
+	// message ("address wss::80: too many colons"). Catch it here instead.
+	if err := validateServer(cfg.Tunnel.Server); err != nil {
+		return fmt.Errorf("invalid tunnel address %q: %w", cfg.Tunnel.Server, err)
+	}
+	log.Printf("[tunnel] connecting to %s (%d remotes)", cfg.Tunnel.Server, len(remotes))
 
 	cl, err := chclient.NewClient(&chclient.Config{
 		Server:           cfg.Tunnel.Server,
