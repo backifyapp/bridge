@@ -69,10 +69,15 @@ backify-bridge status
 ### Updating
 
 ```sh
-sudo backify-bridge update && sudo systemctl restart backify-bridge
+sudo /usr/local/bin/backify-bridge update && sudo systemctl restart backify-bridge
 ```
 
 Downloads the latest release, **verifies the SHA-256** and replaces the binary.
+
+> The absolute path is not decoration: on RHEL-family distros (CloudLinux,
+> Rocky, Alma) `sudo` resets `PATH` to its own `secure_path`, which does not
+> include `/usr/local/bin` — plain `sudo backify-bridge` fails with
+> "command not found".
 Per-version changes live in the [CHANGELOG](CHANGELOG.md); security fixes in
 [SECURITY.md](SECURITY.md).
 

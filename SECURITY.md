@@ -15,7 +15,7 @@ credit the reporter (if they want to be credited).
 Security fixes always ship in the **latest** version. Update with:
 
 ```sh
-sudo backify-bridge update && sudo systemctl restart backify-bridge
+sudo /usr/local/bin/backify-bridge update && sudo systemctl restart backify-bridge
 ```
 
 | Version | Supported |
