@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://backify.app">
-    <img src=".github/assets/backify-logo.svg" alt="Backify" height="56">
+    <img src=".github/assets/backify-icon.svg" alt="Backify" width="96" height="96">
   </a>
 </p>
 
@@ -160,7 +160,7 @@ Dev config elsewhere: `BACKIFY_BRIDGE_CONFIG=./bridge.json`.
 
 <p align="center">
   <a href="https://backify.app">
-    <img src=".github/assets/backify-icon.svg" alt="Backify" height="44">
+    <img src=".github/assets/backify-icon.svg" alt="Backify" width="56" height="56">
   </a>
 </p>
 
