@@ -52,13 +52,32 @@ func buildRemotes(services []api.Service) []string {
 	return remotes
 }
 
+// normalizeServer converts the websocket spellings to the http ones the chisel
+// client expects.
+//
+// Chisel decides whether the address already has a scheme with
+// `strings.HasPrefix(server, "http")` — not by looking for "://". So a perfectly
+// valid "wss://host" is not recognised as a URL: chisel prepends its default
+// scheme, producing "http://wss://host", which parses into host "wss:" and dials
+// "wss::80" ("too many colons in address") forever. Chisel swaps http→ws itself,
+// so https:// is what actually yields a wss:// connection.
+func normalizeServer(server string) string {
+	if rest, ok := strings.CutPrefix(server, "wss://"); ok {
+		return "https://" + rest
+	}
+	if rest, ok := strings.CutPrefix(server, "ws://"); ok {
+		return "http://" + rest
+	}
+	return server
+}
+
 // validateServer rejects addresses that would only blow up inside the chisel
-// client — most importantly a scheme with no host ("wss://"), which the control
+// client — most importantly a scheme with no host ("https://"), which the control
 // plane can hand out when its own env var is half-set.
 func validateServer(server string) error {
 	s := server
 	if !strings.Contains(s, "://") {
-		s = "wss://" + s // chisel accepts a bare host:port
+		s = "https://" + s // chisel accepts a bare host:port
 	}
 	u, err := url.Parse(s)
 	if err != nil {
@@ -108,13 +127,14 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 	}
 	// A malformed address fails deep inside the chisel client with a cryptic
 	// message ("address wss::80: too many colons"). Catch it here instead.
-	if err := validateServer(cfg.Tunnel.Server); err != nil {
+	server := normalizeServer(cfg.Tunnel.Server)
+	if err := validateServer(server); err != nil {
 		return fmt.Errorf("invalid tunnel address %q: %w", cfg.Tunnel.Server, err)
 	}
-	log.Printf("[tunnel] connecting to %s (%d remotes)", cfg.Tunnel.Server, len(remotes))
+	log.Printf("[tunnel] connecting to %s (%d remotes)", server, len(remotes))
 
 	cl, err := chclient.NewClient(&chclient.Config{
-		Server:           cfg.Tunnel.Server,
+		Server:           server,
 		Fingerprint:      cfg.Tunnel.Fingerprint,
 		Auth:             t.agentID + ":" + t.secret,
 		Remotes:          remotes,

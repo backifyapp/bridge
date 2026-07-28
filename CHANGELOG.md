@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-28
+
+### Fixed
+- **The tunnel never came up (`too many colons in address`).** The chisel client
+  decides whether an address already carries a scheme with
+  `HasPrefix(server, "http")` — not by looking for `://`. A valid
+  `wss://host` was therefore not recognised as a URL: chisel prepended its own
+  scheme, producing `http://wss://host`, and dialed `wss::80` forever. The agent
+  now normalises `wss://` → `https://` (and `ws://` → `http://`) before handing
+  the address over, so both spellings work.
+
+### Changed
+- The transport used to go **silent** when it had no tunnel address or no remote
+  port: a misconfigured control plane looked exactly like a healthy idle agent.
+  It now logs why it is idle, and logs the address when it connects.
+
 ## [0.2.1] — 2026-07-28
 
 ### Fixed
@@ -51,7 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/backifyapp/bridge/releases/tag/v0.2.2
 [0.2.1]: https://github.com/backifyapp/bridge/releases/tag/v0.2.1
 [0.2.0]: https://github.com/backifyapp/bridge/releases/tag/v0.2.0
 [0.1.0]: https://github.com/backifyapp/bridge/releases/tag/v0.1.0
