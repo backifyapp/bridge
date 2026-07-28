@@ -63,3 +63,19 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+// `du -sb` devolve "<bytes>\t<path>"; só a 1ª coluna interessa.
+func TestParseDuBytes(t *testing.T) {
+	cases := map[string]int64{
+		"1234\t/data\n":     1234,
+		"  99\t/data":       99,
+		"0\t/data\n":        0,
+		"":                  0,
+		"nao-numero\t/data": 0,
+	}
+	for in, want := range cases {
+		if got := parseDuBytes(in); got != want {
+			t.Errorf("parseDuBytes(%q) = %d, want %d", in, got, want)
+		}
+	}
+}

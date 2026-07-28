@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Volume size** (`GET /docker/volume/{name}/size`): measures the volume with
+  `du` in an ephemeral read-only container, so the dashboard can estimate the
+  backup size without pulling the whole tar through the tunnel.
 - `install.sh --docker` enables the Docker capability on a binary install: it
   adds the agent to the `docker` group and drops in the systemd overrides the
   socket needs. Off by default — socket access is root-equivalent on the host.

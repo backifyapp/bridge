@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -73,6 +74,12 @@ func exportVolumeArgs(volume string) []string {
 	return []string{"run", "--rm", "-v", volume + ":/data:ro", helperImage, "tar", "-C", "/data", "-czf", "-", "."}
 }
 
+// Mede o volume com `du` num container efêmero montando :ro. É local ao host —
+// nada trafega pelo túnel, ao contrário de estimar exportando o tar.
+func volumeSizeArgs(volume string) []string {
+	return []string{"run", "--rm", "-v", volume + ":/data:ro", helperImage, "du", "-sb", "/data"}
+}
+
 func importVolumeArgs(volume string) []string {
 	return []string{"run", "--rm", "-i", "-v", volume + ":/data", helperImage, "tar", "-C", "/data", "-xzf", "-"}
 }
@@ -129,6 +136,28 @@ func ListVolumes(ctx context.Context) ([]Volume, error) {
 		return nil, err
 	}
 	return parseVolumeList(out), nil
+}
+
+// VolumeSize devolve o tamanho do volume em bytes.
+func VolumeSize(ctx context.Context, volume string) (int64, error) {
+	out, err := run(ctx, volumeSizeArgs(volume)...)
+	if err != nil {
+		return 0, err
+	}
+	return parseDuBytes(out), nil
+}
+
+// parseDuBytes lê a 1ª coluna de `du -sb` ("1234\t/data"). Função pura.
+func parseDuBytes(out string) int64 {
+	f := strings.Fields(strings.TrimSpace(out))
+	if len(f) == 0 {
+		return 0
+	}
+	n, err := strconv.ParseInt(f[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // ListContainers lista os containers (inclui parados).

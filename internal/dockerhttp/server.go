@@ -31,6 +31,16 @@ func Handler(secret string) http.Handler {
 		writeJSON(w, vs)
 	}))
 
+	// Tamanho de um volume (estimativa do painel). Medido no host com `du`,
+	// sem trafegar dados pelo túnel.
+	mux.HandleFunc("GET /docker/volume/{name}/size", auth(func(w http.ResponseWriter, r *http.Request) {
+		n, err := docker.VolumeSize(r.Context(), r.PathValue("name"))
+		if fail(w, err) {
+			return
+		}
+		writeJSON(w, map[string]int64{"bytes": n})
+	}))
+
 	mux.HandleFunc("GET /docker/containers", auth(func(w http.ResponseWriter, r *http.Request) {
 		cs, err := docker.ListContainers(r.Context())
 		if fail(w, err) {
