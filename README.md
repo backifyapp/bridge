@@ -76,6 +76,19 @@ Downloads the latest release, **verifies the SHA-256** and replaces the binary.
 Per-version changes live in the [CHANGELOG](CHANGELOG.md); security fixes in
 [SECURITY.md](SECURITY.md).
 
+### Uninstalling
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/backifyapp/bridge/main/install.sh | sudo sh -s -- --uninstall
+```
+
+Stops and removes the service, the binary, the credentials in
+`/etc/backify-bridge` and the dedicated user. Running it as a container instead?
+`docker rm -f backify-bridge && docker rmi ghcr.io/backifyapp/bridge`.
+
+> Deleting the local credentials does **not** revoke the identity. Finish by
+> revoking the server in the dashboard (**Servers → Revoke**).
+
 ## How it works
 
 1. **Enroll** — the Bridge trades a single-use enrollment token for a machine
