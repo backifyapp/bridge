@@ -1,5 +1,5 @@
-// Package sysinfo coleta dados do servidor para o inventário de frota no painel:
-// OS/arch, kernel, CPUs, RAM e IPs. Barato (só stdlib + /proc no Linux).
+// Package sysinfo collects server data for the fleet inventory in the dashboard:
+// OS/arch, kernel, CPUs, RAM and IPs. Cheap (stdlib only + /proc on Linux).
 package sysinfo
 
 import (
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Info é o inventário reportado no heartbeat.
+// Info is the inventory reported in the heartbeat.
 type Info struct {
 	OS            string   `json:"os"`
 	Arch          string   `json:"arch"`
@@ -21,7 +21,7 @@ type Info struct {
 	DockerVersion string   `json:"dockerVersion,omitempty"`
 }
 
-// Collect monta o inventário atual (dockerVersion é preenchido à parte pelo agent).
+// Collect builds the current inventory (dockerVersion is filled separately by the agent).
 func Collect() Info {
 	return Info{
 		OS:          runtime.GOOS,
@@ -49,7 +49,7 @@ func memTotalBytes() int64 {
 	return parseMemTotal(string(b))
 }
 
-// parseMemTotal extrai "MemTotal: N kB" do /proc/meminfo → bytes. Função pura.
+// parseMemTotal extracts "MemTotal: N kB" from /proc/meminfo → bytes. Pure function.
 func parseMemTotal(meminfo string) int64 {
 	for _, line := range strings.Split(meminfo, "\n") {
 		if !strings.HasPrefix(line, "MemTotal:") {
@@ -65,7 +65,7 @@ func parseMemTotal(meminfo string) int64 {
 	return 0
 }
 
-// localIPs devolve os IPv4 não-loopback das interfaces up.
+// localIPs returns the non-loopback IPv4 addresses of the interfaces that are up.
 func localIPs() []string {
 	ips := []string{}
 	ifaces, err := net.Interfaces()

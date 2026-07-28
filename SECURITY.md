@@ -1,45 +1,46 @@
-# Política de segurança
+# Security policy
 
-## Reportar uma vulnerabilidade
+## Reporting a vulnerability
 
-**Não abra issue pública** para falhas de segurança.
+**Do not open a public issue** for security problems.
 
-- Prefira o [Private vulnerability reporting](https://github.com/backifyapp/bridge/security/advisories/new) do GitHub (aba *Security* → *Report a vulnerability*).
-- Ou envie e-mail para **security@backify.app**.
+- Preferably use GitHub's [Private vulnerability reporting](https://github.com/backifyapp/bridge/security/advisories/new) (*Security* tab → *Report a vulnerability*).
+- Or email **security@backify.app**.
 
-Retornamos em até **72 horas** com uma avaliação inicial. Ao publicar a correção,
-creditamos quem reportou (se desejar).
+We reply within **72 hours** with an initial assessment. When the fix ships, we
+credit the reporter (if they want to be credited).
 
-## Versões suportadas
+## Supported versions
 
-Correções de segurança saem sempre na **última versão** (`latest`). Atualize com:
+Security fixes always ship in the **latest** version. Update with:
 
 ```sh
 sudo backify-bridge update && sudo systemctl restart backify-bridge
 ```
 
-| Versão | Suporte |
+| Version | Supported |
 |---|---|
 | 0.2.x | ✅ |
-| 0.1.x | ❌ (atualize) |
+| 0.1.x | ❌ (please update) |
 
-## Modelo de segurança (resumo)
+## Security model (summary)
 
-- O agent faz **apenas conexões de saída** (443/TLS). Nenhuma porta de entrada é
-  aberta no servidor.
-- Toda chamada à API é assinada por **HMAC-SHA256** — o segredo **nunca trafega**;
-  há janela de relógio (±300s) e nonce de uso único (anti-replay).
-- O segredo do agent fica em `/etc/backify-bridge/bridge.json` com permissão `0600`;
-  o serviço systemd roda como usuário dedicado, sem privilégios.
-- As portas expostas pelo túnel são **whitelistadas por agent** no servidor —
-  um agent não alcança as portas de outro.
-- O `update` valida o **SHA-256** publicado antes de trocar o binário.
+- The agent makes **outbound connections only** (443/TLS). No inbound port is
+  opened on your server.
+- Every API call is signed with **HMAC-SHA256** — the secret **never travels**;
+  there is a clock window (±300s) and a single-use nonce (replay protection).
+- The agent secret lives in `/etc/backify-bridge/bridge.json` with mode `0600`;
+  the systemd service runs as a dedicated, unprivileged user.
+- Tunnel-exposed ports are **whitelisted per agent** on the server — one agent
+  cannot reach another agent's ports.
+- `update` verifies the published **SHA-256** before replacing the binary.
 
-### Modo Docker (opt-in)
+### Docker mode (opt-in)
 
-Quando a capability **Docker** é habilitada, o agent usa o socket do Docker do
-host — o que dá a ele controle sobre containers/volumes daquele servidor. Isso é
-opcional e vale só para quem quer backup de volumes/containers. O helper HTTP
-que faz isso escuta **apenas em `127.0.0.1`**, exige assinatura HMAC e só é
-alcançável através do túnel. A config de containers (`docker inspect`) pode
-conter variáveis de ambiente com segredos; elas entram no backup, sempre cifrado.
+When the **Docker** capability is enabled, the agent uses the host's Docker
+socket — which gives it control over that server's containers and volumes. This
+is optional and only relevant if you want volume/container backups. The HTTP
+helper that does this listens **on `127.0.0.1` only**, requires an HMAC
+signature, and is reachable exclusively through the tunnel. Container config
+(`docker inspect`) may contain environment variables holding secrets; they go
+into the backup, always encrypted.

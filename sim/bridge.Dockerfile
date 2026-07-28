@@ -1,4 +1,4 @@
-# Build do Bridge para a simulação. Contexto = raiz do repo bridge.
+# Bridge build for the simulation. Context = root of the bridge repo.
 FROM golang:1.25 AS build
 WORKDIR /src
 COPY go.mod go.sum ./

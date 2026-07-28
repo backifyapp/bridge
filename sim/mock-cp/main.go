@@ -1,6 +1,7 @@
-// mock-cp é um control plane FALSO só para a simulação: responde enroll e
-// heartbeat com config fixa apontando o túnel pro chisel-server da sim. Ignora a
-// assinatura HMAC (o backend real valida; aqui só provamos o transporte).
+// mock-cp is a FAKE control plane for the simulation only: it answers enroll and
+// heartbeat with a fixed config pointing the tunnel at the sim's chisel-server.
+// It ignores the HMAC signature (the real backend validates it; here we only
+// prove the transport works).
 package main
 
 import (

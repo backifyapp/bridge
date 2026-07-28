@@ -9,7 +9,7 @@ import (
 func TestBuildRemotesFormatsAndSkips(t *testing.T) {
 	got := buildRemotes([]api.Service{
 		{Type: "POSTGRES", LocalPort: 5432, RemotePort: 40001},
-		{Type: "SSH", LocalPort: 22, RemotePort: 0}, // sem bind atribuído → ignorado
+		{Type: "SSH", LocalPort: 22, RemotePort: 0}, // no bind assigned → skipped
 		{Type: "REDIS", LocalPort: 0, RemotePort: 40002}, // sem porta local → ignorado
 	})
 	if len(got) != 1 {

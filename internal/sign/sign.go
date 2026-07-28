@@ -1,9 +1,9 @@
 // Package sign implementa a assinatura HMAC-SHA256 que autentica o Bridge na
 // API do Backify. Espelha EXATAMENTE o verificador do backend
 // (apps/api/src/auth/agent.ts) e o do plugin WordPress: o segredo NUNCA trafega,
-// só assina a string canônica.
+// it only signs the canonical string.
 //
-//	canonical = METHOD\nPATH\nTIMESTAMP\nNONCE   (PATH = pathname da requisição)
+//	canonical = METHOD\nPATH\nTIMESTAMP\nNONCE   (PATH = the request pathname)
 package sign
 
 import (
@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// Headers HMAC — nomes idênticos aos esperados pelo backend.
+// HMAC headers — names identical to the ones the backend expects.
 const (
 	HeaderAgentID   = "X-Backify-Agent-Id"
 	HeaderTimestamp = "X-Backify-Timestamp"
@@ -37,7 +37,7 @@ func Signature(secret, method, path, timestamp, nonce string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-// Nonce gera um nonce de uso único (16 bytes → 32 hex chars).
+// Nonce generates a single-use nonce (16 bytes → 32 hex chars).
 func Nonce() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -46,8 +46,9 @@ func Nonce() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Request assina a requisição in-place: usa o método e o pathname da URL, o
-// timestamp atual e um nonce novo. secret é o segredo HMAC obtido no enroll.
+// Request signs the request in place: it uses the method and the URL pathname,
+// the current timestamp and a fresh nonce. secret is the HMAC secret obtained
+// during enroll.
 func Request(req *http.Request, agentID, secret string) error {
 	nonce, err := Nonce()
 	if err != nil {

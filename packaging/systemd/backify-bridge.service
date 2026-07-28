@@ -1,5 +1,5 @@
 [Unit]
-Description=Backify Bridge (broker de acesso via túnel reverso)
+Description=Backify Bridge (reverse-tunnel access broker)
 Documentation=https://github.com/backifyapp/bridge
 After=network-online.target
 Wants=network-online.target
@@ -9,15 +9,15 @@ Type=simple
 ExecStart=/usr/local/bin/backify-bridge run
 Restart=always
 RestartSec=5
-# Roda como usuário dedicado, sem privilégios.
+# Runs as a dedicated, unprivileged user.
 User=backify-bridge
 Group=backify-bridge
-# Endurecimento (menor privilégio): o agent só precisa ler o config e falar rede.
+# Hardening (least privilege): the agent only needs to read its config and use the network.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-# Único caminho gravável: o diretório do config.
+# Only writable path: the config directory.
 ReadWritePaths=/etc/backify-bridge
 ProtectKernelTunables=true
 ProtectControlGroups=true

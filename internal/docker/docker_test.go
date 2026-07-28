@@ -48,7 +48,7 @@ func TestRunContainerArgs(t *testing.T) {
 		}
 	}
 	if args[len(args)-1] != "nginx:1" {
-		t.Fatalf("imagem deve ser o último arg: %v", args)
+		t.Fatalf("the image must be the last arg: %v", args)
 	}
 }
 

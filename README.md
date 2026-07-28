@@ -1,135 +1,186 @@
-# Backify Bridge
+<p align="center">
+  <a href="https://backify.app">
+    <img src=".github/assets/backify-logo.svg" alt="Backify" height="56">
+  </a>
+</p>
 
-**Broker de acesso seguro para backups do [Backify](https://backify.app).**
+<h1 align="center">Backify Bridge</h1>
 
-O Bridge é um agent leve que roda no seu servidor Linux e dá ao Backify acesso
-seguro aos seus serviços locais (banco de dados, arquivos) **sem você abrir
-nenhuma porta de entrada no firewall e sem entregar suas credenciais de produção
-para fora**.
+<p align="center">
+  <strong>Secure access broker for <a href="https://backify.app">Backify</a> backups.</strong><br>
+  Back up databases and files behind a closed firewall — no inbound ports, no shared credentials.
+</p>
 
-Ele disca **para fora** (443/TLS), mantém um túnel reverso e expõe **apenas** os
-serviços que você autorizou no painel. O Bridge **não faz backup**: quem processa
-é o worker do Backify, que alcança o seu banco/arquivos *através* do túnel. Por
-isso o Bridge é minúsculo e o seu servidor **não precisa de mais nada** — nem
-Docker, nem `pg_dump`, nem `restic`.
+<p align="center">
+  <a href="https://github.com/backifyapp/bridge/releases"><img src="https://img.shields.io/github/v/release/backifyapp/bridge?color=2563EB" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2563EB" alt="License: MIT"></a>
+  <a href="https://backify.app"><img src="https://img.shields.io/badge/backify.app-Backup%20as%20a%20Service-10b981" alt="Backify"></a>
+</p>
+
+---
+
+The Bridge is a lightweight agent that runs on your Linux server and gives Backify
+secure access to your local services (databases, files) **without opening a single
+inbound port on your firewall and without handing your production credentials to
+anyone**.
+
+It dials **outbound** (443/TLS), keeps a reverse tunnel up, and exposes **only**
+the services you authorized in the dashboard. The Bridge **does not run backups**:
+the Backify worker does the work, reaching your database/files *through* the
+tunnel. That's why the Bridge is tiny and your server **needs nothing else** — no
+Docker, no `pg_dump`, no `restic`.
 
 ```
-  Seu servidor                              Backify
- ┌────────────────────┐   saída 443/TLS   ┌───────────────────────┐
- │ backify-bridge     │ ────────────────► │ túnel (rede interna)  │
- │  expõe localhost:  │   túnel reverso   │        │              │
+  Your server                               Backify
+ ┌────────────────────┐   outbound 443    ┌───────────────────────┐
+ │ backify-bridge     │ ────────────────► │ tunnel (private net)  │
+ │  exposes localhost:│   reverse tunnel  │        │              │
  │   5432 (postgres)  │ ◄──────────────── │        ▼              │
- │   22   (arquivos)  │                   │   worker → pg_dump    │
+ │   22   (files)     │                   │   worker → pg_dump    │
  └────────────────────┘                   └───────────────────────┘
-     ▲ nada de porta de entrada aberta
+     ▲ no inbound port open
 ```
 
-## Por que usar
+## Why use it
 
-- **Firewall fechado.** Só conexão de saída; nada exposto à internet.
-- **Credenciais ficam com você.** O worker acessa via túnel; nada de expor o banco.
-- **Bancos `localhost-only`.** Faz backup de bancos que só escutam em `127.0.0.1`.
-- **Zero dependências.** Um binário estático. Sem Docker, sem clientes de banco.
+- **Firewall stays closed.** Outbound only; nothing exposed to the internet.
+- **Credentials stay with you.** The worker connects through the tunnel — no need
+  to expose your database to the world.
+- **`localhost-only` databases.** Back up databases that bind to `127.0.0.1`.
+- **Zero dependencies.** A single static binary. No Docker, no database clients.
 
-## Instalação
+## Installation
 
-Linux **amd64/arm64**, roda como serviço `systemd`.
+Linux **amd64/arm64**, runs as a `systemd` service.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/backifyapp/bridge/main/install.sh | sudo sh -s -- --token <SEU_TOKEN>
+curl -fsSL https://raw.githubusercontent.com/backifyapp/bridge/main/install.sh | sudo sh -s -- --token <YOUR_TOKEN>
 ```
 
-O `<SEU_TOKEN>` (enrollment token) é gerado no painel do Backify ao criar um
-Bridge. Ou manualmente:
+`<YOUR_TOKEN>` (the enrollment token) is generated in the Backify dashboard when
+you create a Bridge. Or do it manually:
 
 ```sh
-sudo -u backify-bridge backify-bridge enroll --token <SEU_TOKEN>
+sudo -u backify-bridge backify-bridge enroll --token <YOUR_TOKEN>
 sudo systemctl enable --now backify-bridge
 backify-bridge status
 ```
 
-### Atualizar
+### Updating
 
 ```sh
 sudo backify-bridge update && sudo systemctl restart backify-bridge
 ```
 
-Baixa a última release, **valida o SHA-256** e substitui o binário. As mudanças
-de cada versão estão no [CHANGELOG](CHANGELOG.md); falhas de segurança, no
+Downloads the latest release, **verifies the SHA-256** and replaces the binary.
+Per-version changes live in the [CHANGELOG](CHANGELOG.md); security fixes in
 [SECURITY.md](SECURITY.md).
 
-## Como funciona
+## How it works
 
-1. **Enroll** — o Bridge troca o enrollment token de uso único por uma identidade
-   de máquina + um segredo HMAC, guardados em `/etc/backify-bridge/bridge.json`
-   (permissão `0600`).
-2. **Heartbeat** — periodicamente reporta que está vivo e recebe do Backify
-   **quais serviços expor** (a regra fica no Backify, não no agent).
-3. **Túnel** — mantém a conexão de saída de pé e expõe só as portas autorizadas.
+1. **Enroll** — the Bridge trades a single-use enrollment token for a machine
+   identity plus an HMAC secret, stored in `/etc/backify-bridge/bridge.json`
+   (mode `0600`).
+2. **Heartbeat** — periodically reports that it's alive and receives **which
+   services to expose** (the policy lives in Backify, not in the agent).
+3. **Tunnel** — keeps the outbound connection up and exposes only the authorized
+   ports.
 
-Todas as chamadas à API (menos o enroll) são assinadas por **HMAC-SHA256** — o
-segredo **nunca trafega**, só assina. Veja [`internal/sign`](internal/sign).
+Every API call (except enroll) is signed with **HMAC-SHA256** — the secret
+**never travels**, it only signs. See [`internal/sign`](internal/sign).
 
-## Modo Docker (volumes e containers)
+## Docker mode (volumes and containers)
 
-Além de bancos/arquivos, o Bridge faz backup/restore de **volumes** e
-**containers** Docker (capability opt-in `Docker` no painel). O agent sobe um
-helper HTTP local (só pelo túnel, HMAC) que exporta o volume como `tar.gz` (via
-container efêmero `:ro`) e lê a config do container (`docker inspect`); o restic
-roda no worker. Restore recria volume/container com **nome novo** por padrão.
+Beyond databases and files, the Bridge backs up and restores Docker **volumes**
+and **containers** (opt-in `Docker` capability in the dashboard). The agent
+exposes a local HTTP helper (tunnel-only, HMAC-authenticated) that exports the
+volume as `tar.gz` (through an ephemeral `:ro` container) and reads the container
+config (`docker inspect`); restic runs on the worker. Restore recreates the
+volume/container under a **new name** by default.
 
-Precisa do socket do Docker — use a imagem oficial:
+It needs the Docker socket — use the official image:
 
 ```sh
 docker run -d --name backify-bridge \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /etc/backify-bridge:/etc/backify-bridge \
-  backifyapp/bridge
+  ghcr.io/backifyapp/bridge
 ```
 
-> ⚠️ Acesso ao socket do Docker é **root-equivalente** no host. `docker inspect`
-> pode expor segredos (env vars) — vão para o snapshot cifrado. Habilite só onde
-> você confia no Backify. Banco em container: prefira a origem de banco pelo túnel.
+> ⚠️ Access to the Docker socket is **root-equivalent** on the host. `docker
+> inspect` may expose secrets (env vars) — they end up in the encrypted snapshot.
+> Only enable it where you trust Backify. For a database running in a container,
+> prefer the database source over the tunnel.
 
-## Transporte
+## Transport
 
-O transporte do túnel fica atrás da interface [`transport.Transport`](internal/transport/transport.go).
-A implementação v1 é **Chisel** ([`chisel.go`](internal/transport/chisel.go); TCP
-sobre HTTPS, cripto SSH), embutida como client — o servidor só roda o binário do
-Bridge. A interface existe de propósito: migrar para **FRP** no futuro é uma nova
-implementação, sem mexer no daemon.
+The tunnel transport sits behind the [`transport.Transport`](internal/transport/transport.go)
+interface. The v1 implementation is **Chisel** ([`chisel.go`](internal/transport/chisel.go);
+TCP over HTTPS, SSH crypto), embedded as a client — your server only runs the
+Bridge binary. The interface is deliberate: moving to **FRP** later is a new
+implementation, with no changes to the daemon.
 
-O agent autentica no chisel-server com a própria identidade (`agentID:secret`),
-validada lá por um plugin contra a API do Backify. Cada serviço vira um túnel
-reverso `R:<bind no server>:localhost:<porta local>` — o *bind* é atribuído pelo
-control plane e informado no heartbeat.
+The agent authenticates against the chisel-server with its own identity
+(`agentID:secret`), validated there by a plugin against the Backify API. Each
+service becomes a reverse tunnel `R:<server bind>:localhost:<local port>` — the
+bind is assigned by the control plane and delivered in the heartbeat.
 
-> **Status (Fase 1):** o client Chisel está implementado. Ele espera o Backify
-> provisionar o túnel — enquanto o heartbeat não trouxer `tunnel.server` + a
-> porta remota de cada serviço (Fase 2: `chisel-server` + alocação de portas no
-> control plane), o transporte fica ocioso sem erro. Para exercitar o fluxo sem
-> servidor, use `BACKIFY_BRIDGE_STUB=1`. Rode `go mod tidy` após clonar.
+> **Status (phase 1):** the Chisel client is implemented. It waits for Backify to
+> provision the tunnel — until the heartbeat carries `tunnel.server` plus each
+> service's remote port (phase 2: `chisel-server` + port allocation in the control
+> plane), the transport stays idle without erroring. To exercise the flow without
+> a server, use `BACKIFY_BRIDGE_STUB=1`. Run `go mod tidy` after cloning.
 
-## Segurança
+## Security
 
-- Só saída no cliente; nenhuma porta de entrada aberta.
-- Segredo HMAC em repouso com `0600`; identidade por-agent, revogável no painel.
-- Endpoints do túnel são privados (só o worker alcança), nunca públicos.
-- O serviço systemd roda como usuário dedicado, sem privilégios (hardening).
+- Outbound only on the client; no inbound port is opened.
+- HMAC secret at rest with `0600`; per-agent identity, revocable from the dashboard.
+- Tunnel endpoints are private (only the worker reaches them), never public.
+- The systemd service runs as a dedicated, unprivileged user (hardened).
 
-## Desenvolvimento
+Found a vulnerability? Please read [SECURITY.md](SECURITY.md) — do **not** open a
+public issue.
+
+## Development
 
 ```sh
-go test ./...      # inclui o vetor que prova a compatibilidade HMAC com o backend
+go test ./...      # includes the vector proving HMAC compatibility with the backend
 go build ./...
 go run ./cmd/backify-bridge status
 
-# Teste de aceitação do Docker (roundtrip real de volume) — num host com docker:
+# Docker acceptance test (real volume roundtrip) — on a host with docker:
 go test -tags e2e ./internal/docker
 ```
 
-Config de dev em outro caminho: `BACKIFY_BRIDGE_CONFIG=./bridge.json`.
+Dev config elsewhere: `BACKIFY_BRIDGE_CONFIG=./bridge.json`.
 
-## Licença
+---
+
+## About Backify
+
+<p align="center">
+  <a href="https://backify.app">
+    <img src=".github/assets/backify-icon.svg" alt="Backify" height="44">
+  </a>
+</p>
+
+The Bridge is one piece of **[Backify](https://backify.app)** — Backup as a Service
+for databases, apps, files, email and clouds.
+
+- **Set it and forget it.** Schedule once; Backify runs, encrypts, versions and
+  monitors — and alerts you the moment something fails.
+- **20+ connectors.** PostgreSQL, MySQL, MariaDB, SQL Server, MongoDB, Redis,
+  WordPress, Git, Kubernetes, IMAP email, S3 / Azure / Google Cloud, Google Drive,
+  OneDrive, Dropbox, SFTP / FTP / WebDAV.
+- **Restores that prove themselves.** Periodic integrity checks and automatic
+  restore drills — because a backup you can't restore isn't a backup.
+- **AES-256 encryption**, deduplicated versioned snapshots, and streaming straight
+  to the destination (nothing ever touches disk).
+- **Your storage or ours.** Bring your own bucket, or use Backify Cloud and pay
+  per GB.
+
+**Free plan available — no credit card required.** → **[backify.app](https://backify.app)**
+
+## License
 
 [MIT](LICENSE).

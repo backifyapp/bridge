@@ -1,4 +1,4 @@
-# Binários
+# Binaries
 /backify-bridge
 /dist/
 *.exe
@@ -8,7 +8,7 @@
 *.test
 *.out
 
-# Config local de dev (contém segredo do agent)
+# Local dev config (holds the agent secret)
 bridge.json
 *.local
 

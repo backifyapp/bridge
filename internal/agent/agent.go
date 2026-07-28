@@ -1,6 +1,7 @@
-// Package agent roda o loop do daemon: heartbeat periódico no Backify e, a cada
-// resposta, aplica a config no transport (quais serviços expor). Mantém o túnel
-// vivo — o AGENDAMENTO dos backups é do Backify, não do agent.
+// Package agent runs the daemon loop: a periodic heartbeat to Backify and, on
+// each response, applies the config to the transport (which services to expose).
+// It keeps the tunnel alive — backup SCHEDULING belongs to Backify, not to the
+// agent.
 package agent
 
 import (
@@ -21,10 +22,10 @@ import (
 
 const heartbeatInterval = 30 * time.Second
 
-// ErrNotEnrolled é devolvido quando o config não tem credenciais (rode `enroll`).
-var ErrNotEnrolled = errors.New("agent não registrado — rode `backify-bridge enroll` primeiro")
+// ErrNotEnrolled is returned when the config has no credentials (run `enroll`).
+var ErrNotEnrolled = errors.New("agent not enrolled — run `backify-bridge enroll` first")
 
-// Run executa o loop até o contexto ser cancelado (SIGINT/SIGTERM).
+// Run executes the loop until the context is canceled (SIGINT/SIGTERM).
 func Run(ctx context.Context, cfg *config.Config, version string, t transport.Transport) error {
 	if !cfg.Enrolled() {
 		return ErrNotEnrolled
@@ -37,7 +38,7 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 
 	dockerHelperUp := false
 	for {
-		// Inventário de frota (barato); versão do Docker só se estiver em modo docker.
+		// Fleet inventory (cheap); Docker version only when in docker mode.
 		si := sysinfo.Collect()
 		if dockerHelperUp {
 			si.DockerVersion = docker.Version(ctx)
@@ -47,9 +48,9 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 			log.Printf("[agent] heartbeat falhou: %v", err)
 		} else {
 			if err := t.Sync(ctx, acfg); err != nil {
-				log.Printf("[agent] sync do transport falhou: %v", err)
+				log.Printf("[agent] transport sync failed: %v", err)
 			}
-			// Capability Docker: sobe o helper HTTP local (uma vez) na porta do serviço.
+			// Docker capability: starts the local HTTP helper (once) on the service port.
 			if !dockerHelperUp {
 				if svc := findDockerService(acfg.Services); svc != nil {
 					dockerHelperUp = true
@@ -72,7 +73,7 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 	}
 }
 
-// findDockerService devolve o serviço com a capability DOCKER, se houver.
+// findDockerService returns the service with the DOCKER capability, if any.
 func findDockerService(services []api.Service) *api.Service {
 	for i := range services {
 		if services[i].Type == "DOCKER" {

@@ -1,6 +1,6 @@
 name: release
 
-# Em cada tag vX.Y.Z: compila binários Linux (amd64/arm64), anexa ao Release e
+# On every vX.Y.Z tag: builds Linux binaries (amd64/arm64), attaches them to the Release and
 # publica a imagem oficial no GHCR (ghcr.io/backifyapp/bridge).
 on:
   push:
@@ -40,14 +40,14 @@ jobs:
       - name: upload to release
         uses: softprops/action-gh-release@v2
         with:
-          # Notas geradas dos commits; o CHANGELOG.md tem o histórico curado.
+          # Notes generated from commits; CHANGELOG.md holds the curated history.
           generate_release_notes: true
           files: |
             dist/backify-bridge_linux_${{ matrix.goarch }}
             dist/backify-bridge_linux_${{ matrix.goarch }}.sha256
 
   image:
-    # Imagem oficial (inclui docker-cli, necessária para o modo docker).
+    # Official image (bundles docker-cli, required for docker mode).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

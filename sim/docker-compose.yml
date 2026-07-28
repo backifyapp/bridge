@@ -1,10 +1,10 @@
-# Simulação ponta a ponta do Backify Bridge.
+# End-to-end simulation of the Backify Bridge.
 #
-#   db        = "Postgres do cliente" (só localhost, sem porta pública)
+#   db        = "customer Postgres" (localhost only, no public port)
 #   mock-cp   = control plane FALSO (enroll + heartbeat com config fixa)
-#   chisel    = chisel-server (o túnel), com authfile por-agent
+#   chisel    = chisel-server (the tunnel), with a per-agent authfile
 #   bridge    = o agent, instalado "no servidor do cliente" (compartilha a rede do db)
-#   consumer  = faz o papel do worker: alcança o Postgres do cliente ATRAVÉS do túnel
+#   consumer  = plays the worker's role: reaches the customer Postgres THROUGH the tunnel
 #
 # Rodar:  docker compose -f sim/docker-compose.yml up --build \
 #           --abort-on-container-exit --exit-code-from consumer
@@ -39,7 +39,7 @@ services:
     volumes:
       - ./authfile:/etc/chisel:ro
     ports:
-      # Publica a porta reversa p/ inspeção externa (o consumer não precisa disto).
+      # Publishes the reverse port for external inspection (the consumer doesn't need it).
       - "40001:40001"
 
   bridge:
@@ -54,7 +54,7 @@ services:
       chisel:
         condition: service_started
     # Compartilha a pilha de rede do db: assim localhost:5432 no bridge = o
-    # Postgres do "cliente" (como se estivessem na mesma máquina).
+    # The "customer" Postgres (as if they were on the same machine).
     network_mode: "service:db"
 
   consumer:

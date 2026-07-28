@@ -1,8 +1,9 @@
-// Command backify-bridge — Backify Bridge: broker de acesso via túnel reverso.
+// Command backify-bridge — Backify Bridge: reverse-tunnel access broker.
 //
-// Instalado no servidor Linux do cliente, disca pra fora (443/TLS), mantém um
-// túnel reverso e expõe SÓ os serviços locais que o Backify autorizou. Não faz
-// backup: o worker do Backify roda os dumps ALCANÇANDO os serviços pelo túnel.
+// Installed on the customer's Linux server, it dials outbound (443/TLS), keeps a
+// reverse tunnel up and exposes ONLY the local services Backify authorized. It
+// does not run backups: the Backify worker runs the dumps, REACHING the services
+// through the tunnel.
 package main
 
 import (
@@ -20,7 +21,7 @@ import (
 	"github.com/backifyapp/bridge/internal/updater"
 )
 
-// version é injetada no build: -ldflags "-X main.version=v1.2.3".
+// version is injected at build time: -ldflags "-X main.version=v1.2.3".
 var version = "dev"
 
 const defaultAPIURL = "https://api.backify.app"
@@ -48,41 +49,41 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `backify-bridge — Backify Bridge (broker de acesso via túnel reverso)
+	fmt.Fprint(os.Stderr, `backify-bridge — Backify Bridge (reverse-tunnel access broker)
 
-Uso:
-  backify-bridge enroll --token <TOKEN> [--url <API_URL>]   registra este servidor no Backify
-  backify-bridge run                                        roda o daemon (mantém o túnel)
-  backify-bridge status                                     mostra o estado do registro
-  backify-bridge update                                     atualiza para a última versão
-  backify-bridge version                                    versão do binário
+Usage:
+  backify-bridge enroll --token <TOKEN> [--url <API_URL>]   enroll this server with Backify
+  backify-bridge run                                        run the daemon (keeps the tunnel up)
+  backify-bridge status                                     show the enrollment state
+  backify-bridge update                                     update to the latest version
+  backify-bridge version                                    binary version
 `)
 }
 
 func cmdEnroll(args []string) {
 	fs := flag.NewFlagSet("enroll", flag.ExitOnError)
-	token := fs.String("token", "", "enrollment token gerado no painel (obrigatório)")
-	url := fs.String("url", defaultAPIURL, "URL da API do Backify")
+	token := fs.String("token", "", "enrollment token generated in the dashboard (required)")
+	url := fs.String("url", defaultAPIURL, "Backify API URL")
 	_ = fs.Parse(args)
 
 	if *token == "" {
-		fmt.Fprintln(os.Stderr, "erro: --token é obrigatório")
+		fmt.Fprintln(os.Stderr, "error: --token is required")
 		os.Exit(2)
 	}
 
 	hostname, _ := os.Hostname()
 	agentID, secret, err := api.Enroll(context.Background(), *url, *token, hostname, version)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "enroll falhou:", err)
+		fmt.Fprintln(os.Stderr, "enroll failed:", err)
 		os.Exit(1)
 	}
 
 	cfg := &config.Config{APIURL: *url, AgentID: agentID, HMACSecret: secret}
 	if err := config.Save(config.Path(), cfg); err != nil {
-		fmt.Fprintln(os.Stderr, "erro ao salvar o config:", err)
+		fmt.Fprintln(os.Stderr, "failed to save the config:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Registrado com sucesso.\n  agentId: %s\n  config:  %s\nAgora rode: backify-bridge run\n", agentID, config.Path())
+	fmt.Printf("Enrolled successfully.\n  agentId: %s\n  config:  %s\nNow run: backify-bridge run\n", agentID, config.Path())
 }
 
 func cmdRun(args []string) {
@@ -91,20 +92,20 @@ func cmdRun(args []string) {
 
 	cfg, err := config.Load(config.Path())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "não foi possível ler o config (rode `enroll` primeiro):", err)
+		fmt.Fprintln(os.Stderr, "could not read the config (run `enroll` first):", err)
 		os.Exit(1)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Túnel real via Chisel; BACKIFY_BRIDGE_STUB=1 usa o stub (dev sem servidor).
+	// Real tunnel over Chisel; BACKIFY_BRIDGE_STUB=1 uses the stub (dev without a server).
 	var t transport.Transport = transport.NewChisel(cfg.AgentID, cfg.HMACSecret)
 	if os.Getenv("BACKIFY_BRIDGE_STUB") == "1" {
 		t = transport.Stub{}
 	}
 	if err := agent.Run(ctx, cfg, version, t); err != nil && ctx.Err() == nil {
-		fmt.Fprintln(os.Stderr, "agent parou:", err)
+		fmt.Fprintln(os.Stderr, "agent stopped:", err)
 		os.Exit(1)
 	}
 }
@@ -112,14 +113,14 @@ func cmdRun(args []string) {
 func cmdUpdate() {
 	tag, updated, err := updater.Run(version)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "falha ao atualizar:", err)
+		fmt.Fprintln(os.Stderr, "update failed:", err)
 		os.Exit(1)
 	}
 	if !updated {
-		fmt.Printf("Já está na última versão (%s).\n", tag)
+		fmt.Printf("Already on the latest version (%s).\n", tag)
 		return
 	}
-	fmt.Printf("Atualizado para %s. Reinicie o serviço:\n  sudo systemctl restart backify-bridge\n", tag)
+	fmt.Printf("Updated to %s. Restart the service:\n  sudo systemctl restart backify-bridge\n", tag)
 }
 
 func cmdStatus(args []string) {
@@ -128,7 +129,7 @@ func cmdStatus(args []string) {
 
 	cfg, err := config.Load(config.Path())
 	if err != nil {
-		fmt.Println("status: NÃO configurado (rode `backify-bridge enroll`)")
+		fmt.Println("status: NOT configured (run `backify-bridge enroll`)")
 		return
 	}
 	fmt.Printf("status:  %s\nagentId: %s\napi:     %s\nconfig:  %s\n",

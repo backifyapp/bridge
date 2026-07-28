@@ -1,6 +1,6 @@
-// Package updater baixa e instala a última release do Bridge, verificando o
-// sha256 publicado antes de trocar o binário. Update fácil na mão
-// (`backify-bridge update`); auto-update no heartbeat fica pra depois.
+// Package updater downloads and installs the latest Bridge release, verifying
+// the published sha256 before swapping the binary. Easy manual update
+// (`backify-bridge update`); auto-update on heartbeat comes later.
 package updater
 
 import (
@@ -20,7 +20,7 @@ const repo = "backifyapp/bridge"
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
 
-// assetName é o nome do binário publicado para este OS/arch.
+// assetName is the name of the binary published for this OS/arch.
 func assetName() string {
 	return fmt.Sprintf("backify-bridge_%s_%s", runtime.GOOS, runtime.GOARCH)
 }
@@ -43,7 +43,7 @@ func latestTag() (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("GitHub API %d ao buscar a última release", resp.StatusCode)
+		return "", fmt.Errorf("GitHub API %d while fetching the latest release", resp.StatusCode)
 	}
 	var r struct {
 		TagName string `json:"tag_name"`
@@ -69,8 +69,8 @@ func download(url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// Run instala a última versão se for diferente da atual. Devolve a tag e se
-// houve atualização.
+// Run installs the latest version if it differs from the current one. It returns
+// the tag and whether an update happened.
 func Run(currentVersion string) (tag string, updated bool, err error) {
 	tag, err = latestTag()
 	if err != nil {
@@ -92,17 +92,17 @@ func Run(currentVersion string) (tag string, updated bool, err error) {
 	want := parseSHA(string(shaRaw))
 	got := fmt.Sprintf("%x", sha256.Sum256(bin))
 	if want == "" || got != want {
-		return "", false, fmt.Errorf("checksum não confere (esperado %s, veio %s)", want, got)
+		return "", false, fmt.Errorf("checksum mismatch (expected %s, got %s)", want, got)
 	}
 
-	// Substitui o próprio binário (no Linux dá pra renomear por cima do que roda).
+	// Replaces its own binary (on Linux you can rename over a running executable).
 	self, err := os.Executable()
 	if err != nil {
 		return "", false, err
 	}
 	tmp := filepath.Join(filepath.Dir(self), ".backify-bridge.new")
 	if err := os.WriteFile(tmp, bin, 0o755); err != nil {
-		return "", false, fmt.Errorf("sem permissão pra escrever em %s: %w", filepath.Dir(self), err)
+		return "", false, fmt.Errorf("no permission to write to %s: %w", filepath.Dir(self), err)
 	}
 	if err := os.Rename(tmp, self); err != nil {
 		_ = os.Remove(tmp)

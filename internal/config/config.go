@@ -1,7 +1,7 @@
-// Package config lê e grava a identidade local do Bridge (URL da API + id do
+// Package config reads and writes the Bridge's local identity (API URL + agent
 // agent + segredo HMAC). Diferente do modelo "config-file de backup": aqui o
-// arquivo só guarda a IDENTIDADE do agent — O QUE expor é decidido pelo Backify
-// e vem no heartbeat. O segredo fica em repouso com permissão 0600.
+// file only holds the agent's IDENTITY — WHAT to expose is decided by Backify
+// and arrives in the heartbeat. The secret rests with mode 0600.
 package config
 
 import (
@@ -13,7 +13,7 @@ import (
 
 const defaultPath = "/etc/backify-bridge/bridge.json"
 
-// Config é a identidade persistida do agent.
+// Config is the agent's persisted identity.
 type Config struct {
 	APIURL     string `json:"apiUrl"`
 	AgentID    string `json:"agentId"`
@@ -28,12 +28,12 @@ func Path() string {
 	return defaultPath
 }
 
-// Enrolled indica se o agent já trocou o enrollment token pelas credenciais.
+// Enrolled reports whether the agent already traded the enrollment token for credentials.
 func (c *Config) Enrolled() bool {
 	return c.AgentID != "" && c.HMACSecret != ""
 }
 
-// Load lê o config do disco.
+// Load reads the config from disk.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -46,7 +46,7 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
-// Save grava o config com permissão 0600 (segredo em repouso) e diretório 0700.
+// Save writes the config with mode 0600 (secret at rest) and directory 0700.
 func Save(path string, c *Config) error {
 	if path == "" {
 		return errors.New("caminho de config vazio")

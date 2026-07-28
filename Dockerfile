@@ -7,8 +7,8 @@
 #     -v /etc/backify-bridge:/etc/backify-bridge \
 #     backifyapp/bridge
 #
-# Acesso ao socket do Docker é ROOT-EQUIVALENTE no host — use só em servidores
-# onde você confia no controle do Backify sobre o Docker.
+# Access to the Docker socket is ROOT-EQUIVALENT on the host — only use it on
+# servers where you trust Backify's control over Docker.
 FROM golang:1.25 AS build
 WORKDIR /src
 COPY go.mod go.sum ./

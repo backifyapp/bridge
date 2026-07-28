@@ -31,7 +31,7 @@ func TestAuthValidPasses(t *testing.T) {
 	rr := httptest.NewRecorder()
 	newHandler()(rr, signedReq("GET", "/docker/ping", now(), "n1"))
 	if rr.Code != 200 {
-		t.Fatalf("assinatura válida devia passar, veio %d", rr.Code)
+		t.Fatalf("a valid signature should pass, got %d", rr.Code)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestAuthClockSkew(t *testing.T) {
 func TestAuthReplay(t *testing.T) {
 	h := newHandler()
 	ts := now()
-	// mesmo request (ts+nonce+sig) duas vezes: 1ª passa, 2ª é replay.
+	// same request (ts+nonce+sig) twice: the 1st passes, the 2nd is a replay.
 	rr1 := httptest.NewRecorder()
 	h(rr1, signedReq("GET", "/docker/ping", ts, "dup"))
 	rr2 := httptest.NewRecorder()

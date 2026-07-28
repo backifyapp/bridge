@@ -1,7 +1,7 @@
 //go:build e2e
 
-// Teste de aceitação do Docker (roundtrip real de volume). Fora do `go test`
-// normal — precisa de um host com docker + socket. Rode com:
+// Docker acceptance test (real volume roundtrip). Outside the regular `go test`
+// run — it needs a host with docker + socket. Run it with:
 //
 //	go test -tags e2e ./internal/docker
 package docker
@@ -16,7 +16,7 @@ import (
 func TestVolumeRoundtripE2E(t *testing.T) {
 	ctx := context.Background()
 	if !Available(ctx) {
-		t.Skip("docker indisponível")
+		t.Skip("docker unavailable")
 	}
 
 	const src = "backify-e2e-src"
@@ -34,7 +34,7 @@ func TestVolumeRoundtripE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Export → tar em memória.
+	// Export → tar in memory.
 	var buf bytes.Buffer
 	if err := ExportVolume(ctx, src, &buf); err != nil {
 		t.Fatalf("export: %v", err)
@@ -43,7 +43,7 @@ func TestVolumeRoundtripE2E(t *testing.T) {
 		t.Fatal("tar exportado vazio")
 	}
 
-	// Import num volume NOVO e confere o conteúdo.
+	// Import into a NEW volume and check the contents.
 	if err := ImportVolume(ctx, dst, &buf); err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -52,6 +52,6 @@ func TestVolumeRoundtripE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, "hello-backify") {
-		t.Fatalf("conteúdo restaurado não bateu: %q", out)
+		t.Fatalf("restored contents did not match: %q", out)
 	}
 }

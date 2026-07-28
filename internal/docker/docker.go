@@ -1,6 +1,6 @@
-// Package docker envolve o Docker via CLI (os/exec) — mantém o binário leve
-// (sem o SDK oficial). A construção de comandos e o parsing são funções puras
-// (testáveis); o exec é uma casca fina.
+// Package docker wraps Docker through the CLI (os/exec) — it keeps the binary
+// small (no official SDK). Command building and parsing are pure functions
+// (testable); exec is a thin shell around them.
 package docker
 
 import (
@@ -12,33 +12,33 @@ import (
 	"strings"
 )
 
-// Imagem efêmera usada para tarar/destarar volumes.
+// Ephemeral image used to tar/untar volumes.
 const helperImage = "alpine:3"
 
-// Volume é um volume nomeado do Docker.
+// Volume is a named Docker volume.
 type Volume struct {
 	Name string `json:"name"`
 }
 
-// Container é um container (em execução ou não).
+// Container is a container (running or not).
 type Container struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Image string `json:"image"`
 }
 
-// RunSpec é a config mínima para recriar um container no restore. O worker deriva
-// isto do `docker inspect` guardado no backup.
+// RunSpec is the minimal config to recreate a container on restore. The worker
+// derives it from the `docker inspect` stored in the backup.
 type RunSpec struct {
 	Name          string   `json:"name"`
 	Image         string   `json:"image"`
 	Env           []string `json:"env"`           // "KEY=value"
 	Ports         []string `json:"ports"`         // "hostPort:containerPort"
 	Volumes       []string `json:"volumes"`       // "volName:/path[:ro]"
-	RestartPolicy string   `json:"restartPolicy"` // ex.: "unless-stopped"
+	RestartPolicy string   `json:"restartPolicy"` // e.g. "unless-stopped"
 }
 
-// ── Funções puras (testáveis) ───────────────────────────────────────────────
+// ── Pure functions (testable) ───────────────────────────────────────────────
 
 func parseVolumeList(out string) []Volume {
 	vs := []Volume{}
@@ -113,7 +113,7 @@ func Available(ctx context.Context) bool {
 	return err == nil
 }
 
-// Version devolve a versão do Docker server (vazio se indisponível).
+// Version returns the Docker server version (empty if unavailable).
 func Version(ctx context.Context) string {
 	out, err := run(ctx, "version", "--format", "{{.Server.Version}}")
 	if err != nil {
@@ -176,7 +176,7 @@ func InspectContainer(ctx context.Context, id string) (json.RawMessage, error) {
 	return json.RawMessage(out), nil
 }
 
-// RunContainer recria um container a partir da spec mínima; devolve o id.
+// RunContainer recreates a container from the minimal spec; returns its id.
 func RunContainer(ctx context.Context, s RunSpec) (string, error) {
 	out, err := run(ctx, runContainerArgs(s)...)
 	if err != nil {
@@ -185,6 +185,6 @@ func RunContainer(ctx context.Context, s RunSpec) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// Pause / Unpause para consistência durante o backup do volume.
+// Pause / Unpause for consistency during the volume backup.
 func Pause(ctx context.Context, id string) error   { _, err := run(ctx, "pause", id); return err }
 func Unpause(ctx context.Context, id string) error { _, err := run(ctx, "unpause", id); return err }

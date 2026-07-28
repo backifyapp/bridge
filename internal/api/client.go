@@ -1,6 +1,6 @@
-// Package api fala com a API do Backify: enroll (troca do enrollment token) e
-// heartbeat (assinado por HMAC). Respeita o envelope { data } / { error } do
-// backend.
+// Package api talks to the Backify API: enroll (trading the enrollment token)
+// and heartbeat (HMAC-signed). It honors the backend's { data } / { error }
+// envelope.
 package api
 
 import (
@@ -15,23 +15,24 @@ import (
 	"github.com/backifyapp/bridge/internal/sign"
 )
 
-// Service é um serviço local que o agent deve expor pelo túnel. RemotePort é o
-// bind atribuído pelo control plane no chisel-server (onde o worker conecta);
-// fica 0 enquanto o Backify ainda não provisionou o túnel (Fase 2).
+// Service is a local service the agent must expose through the tunnel.
+// RemotePort is the bind assigned by the control plane on the chisel-server
+// (where the worker connects); it stays 0 while Backify hasn't provisioned the
+// tunnel yet (phase 2).
 type Service struct {
 	Type       string `json:"type"`
 	LocalPort  int    `json:"localPort"`
 	RemotePort int    `json:"remotePort"`
 }
 
-// TunnelInfo diz onde e como o agent disca o túnel. Vem no heartbeat (pode
-// rotacionar). Fingerprint faz pinning do host key do chisel-server.
+// TunnelInfo says where and how the agent dials the tunnel. It arrives in the
+// heartbeat (and may rotate). Fingerprint pins the chisel-server host key.
 type TunnelInfo struct {
 	Server      string `json:"server"`
 	Fingerprint string `json:"fingerprint"`
 }
 
-// AgentConfig é a config devolvida no heartbeat (túnel + o que expor).
+// AgentConfig is the config returned by the heartbeat (tunnel + what to expose).
 type AgentConfig struct {
 	Tunnel   TunnelInfo `json:"tunnel"`
 	Services []Service  `json:"services"`
@@ -46,7 +47,7 @@ type envelope struct {
 	} `json:"error"`
 }
 
-// Client é o cliente autenticado por HMAC (heartbeat e futuras chamadas).
+// Client is the HMAC-authenticated client (heartbeat and future calls).
 type Client struct {
 	baseURL string
 	agentID string
@@ -54,7 +55,7 @@ type Client struct {
 	http    *http.Client
 }
 
-// New cria um cliente já com a identidade do agent.
+// New creates a client already carrying the agent's identity.
 func New(baseURL, agentID, secret string) *Client {
 	return &Client{
 		baseURL: baseURL,
@@ -64,7 +65,7 @@ func New(baseURL, agentID, secret string) *Client {
 	}
 }
 
-// do executa a requisição e desserializa `data` em out (ou devolve o erro da API).
+// do performs the request and unmarshals `data` into out (or returns the API error).
 func do(hc *http.Client, req *http.Request, out any) error {
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -75,7 +76,7 @@ func do(hc *http.Client, req *http.Request, out any) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var env envelope
 	if err := json.Unmarshal(body, &env); err != nil {
-		return fmt.Errorf("resposta inválida (HTTP %d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("invalid response (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 	if env.Error != nil {
 		return fmt.Errorf("API %d %s: %s", resp.StatusCode, env.Error.Code, env.Error.Message)
@@ -89,8 +90,8 @@ func do(hc *http.Client, req *http.Request, out any) error {
 	return nil
 }
 
-// Enroll troca o enrollment token de uso único pelas credenciais de máquina.
-// Não é assinado (o próprio token é a prova). Devolve o segredo HMAC uma vez.
+// Enroll trades the single-use enrollment token for machine credentials. It is
+// not signed (the token itself is the proof). It returns the HMAC secret once.
 func Enroll(ctx context.Context, baseURL, token, hostname, version string) (agentID, secret string, err error) {
 	payload, _ := json.Marshal(map[string]string{
 		"enrollmentToken": token,
@@ -113,7 +114,7 @@ func Enroll(ctx context.Context, baseURL, token, hostname, version string) (agen
 	return res.AgentID, res.HMACSecret, nil
 }
 
-// Heartbeat reporta estado (versão/hostname + inventário) e recebe a config a aplicar.
+// Heartbeat reports state (version/hostname + inventory) and receives the config to apply.
 func (c *Client) Heartbeat(ctx context.Context, version, hostname string, systemInfo any) (*AgentConfig, error) {
 	payload, _ := json.Marshal(map[string]any{"version": version, "hostname": hostname, "systemInfo": systemInfo})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/agents/heartbeat", bytes.NewReader(payload))

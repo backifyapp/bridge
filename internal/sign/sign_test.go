@@ -2,9 +2,9 @@ package sign
 
 import "testing"
 
-// Vetor de referência gerado com o MESMO algoritmo do backend
-// (apps/api/src/auth/agent.ts). Se este teste quebrar, o Bridge e o Backify
-// deixaram de assinar igual — a auth do agent para de funcionar.
+// Reference vector generated with the SAME algorithm as the backend
+// (apps/api/src/auth/agent.ts). If this test breaks, the Bridge and Backify no
+// longer sign identically — agent auth stops working.
 func TestSignatureMatchesBackendVector(t *testing.T) {
 	got := Signature("s3cr3t-hmac-key", "POST", "/api/agents/heartbeat", "1700000000", "nonce-abc")
 	const want = "46b571e5501aa5fad22ab04fbcc55a02b58926b00ddd00cd13b0d9f76ce5f5c2"
@@ -28,7 +28,7 @@ func TestNonceUniqueAndHexLength(t *testing.T) {
 	}
 	b, _ := Nonce()
 	if a == b {
-		t.Fatal("nonce repetido — não deveria")
+		t.Fatal("repeated nonce — should not happen")
 	}
 	if len(a) != 32 {
 		t.Fatalf("nonce len=%d want 32 (16 bytes hex)", len(a))

@@ -1,6 +1,7 @@
-// Package dockerhttp é o helper HTTP LOCAL do agent (modo docker): expõe, só pelo
-// túnel e autenticado por HMAC, operações de backup/restore de volumes e
-// containers Docker. O restic continua no worker — aqui só exportamos/importamos.
+// Package dockerhttp is the agent's LOCAL HTTP helper (docker mode): it exposes,
+// tunnel-only and HMAC-authenticated, backup/restore operations for Docker
+// volumes and containers. restic stays on the worker — here we only export and
+// import.
 package dockerhttp
 
 import (
@@ -41,7 +42,7 @@ func Handler(secret string) http.Handler {
 	mux.HandleFunc("GET /docker/volume/{name}/export", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/gzip")
 		if err := docker.ExportVolume(r.Context(), r.PathValue("name"), w); err != nil {
-			// headers podem já ter ido; o worker detecta o stream truncado.
+			// headers may already be sent; the worker detects the truncated stream.
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}))
@@ -67,7 +68,7 @@ func Handler(secret string) http.Handler {
 	mux.HandleFunc("POST /docker/container/run", auth(func(w http.ResponseWriter, r *http.Request) {
 		var spec docker.RunSpec
 		if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-			http.Error(w, "spec inválida", http.StatusBadRequest)
+			http.Error(w, "invalid spec", http.StatusBadRequest)
 			return
 		}
 		id, err := docker.RunContainer(r.Context(), spec)
@@ -94,7 +95,7 @@ func Handler(secret string) http.Handler {
 	return mux
 }
 
-// Serve sobe o helper em addr (127.0.0.1:<porta>) até o contexto cancelar.
+// Serve starts the helper on addr (127.0.0.1:<port>) until the context is canceled.
 func Serve(ctx context.Context, addr, secret string) error {
 	srv := &http.Server{Addr: addr, Handler: Handler(secret)}
 	go func() {

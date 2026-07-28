@@ -15,7 +15,7 @@ const (
 	nonceTTLSeconds  = 600
 )
 
-// nonceCache guarda nonces já usados (anti-replay), com expiração.
+// nonceCache holds already-used nonces (replay protection), with expiry.
 type nonceCache struct {
 	mu   sync.Mutex
 	seen map[string]int64 // nonce → expiry unix
@@ -23,7 +23,7 @@ type nonceCache struct {
 
 func newNonceCache() *nonceCache { return &nonceCache{seen: map[string]int64{}} }
 
-// consume reserva o nonce; retorna false se já foi usado (replay).
+// consume reserves the nonce; returns false if it was already used (replay).
 func (c *nonceCache) consume(nonce string, now int64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -39,9 +39,9 @@ func (c *nonceCache) consume(nonce string, now int64) bool {
 	return true
 }
 
-// authMiddleware verifica a assinatura HMAC (mesmo esquema do resto do agent):
-// janela de relógio ±300s, assinatura sobre METHOD\nPATH\nTS\nNONCE, e nonce de
-// uso único. O nonce só é queimado após a assinatura conferir.
+// authMiddleware verifies the HMAC signature (same scheme as the rest of the agent):
+// ±300s clock window, signature over METHOD\nPATH\nTS\nNONCE, and a single-use
+// nonce. The nonce is only burned after the signature checks out.
 func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ts := r.Header.Get(sign.HeaderTimestamp)
@@ -59,7 +59,7 @@ func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.H
 		}
 		want := sign.Signature(secret, r.Method, r.URL.Path, ts, nonce)
 		if !hmac.Equal([]byte(want), []byte(gotSig)) {
-			http.Error(w, "assinatura inválida", http.StatusUnauthorized)
+			http.Error(w, "invalid signature", http.StatusUnauthorized)
 			return
 		}
 		if !nc.consume(nonce, now) {

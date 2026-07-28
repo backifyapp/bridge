@@ -12,45 +12,45 @@ import (
 	"github.com/backifyapp/bridge/internal/api"
 )
 
-// ChiselTransport mantém um client Chisel (TCP sobre HTTPS, cripto SSH) que abre
-// túneis reversos: o chisel-server do Backify passa a alcançar os serviços locais
-// do cliente. A config de conexão (server/fingerprint) vem no heartbeat e pode
-// rotacionar; a auth reusa a identidade do agent (agentID:secret), validada no
-// server por um plugin contra a API do Backify (nenhum segredo novo).
+// ChiselTransport keeps a Chisel client (TCP over HTTPS, SSH crypto) that opens
+// reverse tunnels: Backify's chisel-server can then reach the customer's local
+// services. The connection config (server/fingerprint) arrives in the heartbeat
+// and may rotate; auth reuses the agent identity (agentID:secret), validated on
+// the server by a plugin against the Backify API (no new secret).
 type ChiselTransport struct {
 	agentID string
 	secret  string
 
 	mu      sync.Mutex
 	client  *chclient.Client
-	current string // server+fingerprint+remotes atuais (detecta mudança)
+	current string // current server+fingerprint+remotes (detects changes)
 }
 
-// NewChisel cria o transporte com a identidade do agent (pra auth no túnel).
+// NewChisel creates the transport with the agent identity (for tunnel auth).
 func NewChisel(agentID, secret string) *ChiselTransport {
 	return &ChiselTransport{agentID: agentID, secret: secret}
 }
 
-// buildRemotes traduz os serviços autorizados em remotes reversos do Chisel:
+// buildRemotes translates the authorized services into Chisel reverse remotes:
 //
-//	R:<bind no server>:<alvo no cliente>
+//	R:<bind on server>:<target on client>
 //
-// O bind (RemotePort) é atribuído pelo control plane; o worker conecta nele.
-// Serviços sem porta atribuída ainda são ignorados.
+// The bind (RemotePort) is assigned by the control plane; the worker connects to
+// it. Services without an assigned port are skipped.
 func buildRemotes(services []api.Service) []string {
 	remotes := make([]string, 0, len(services))
 	for _, s := range services {
 		if s.RemotePort == 0 || s.LocalPort == 0 {
 			continue
 		}
-		// Bind em 0.0.0.0 no chisel-server (não loopback) — senão a porta reversa
-		// fica inalcançável fora do container (worker / publish de portas).
+		// Bind on 0.0.0.0 on the chisel-server (not loopback) — otherwise the reverse
+		// port is unreachable outside the container (worker / published ports).
 		remotes = append(remotes, fmt.Sprintf("R:0.0.0.0:%d:127.0.0.1:%d", s.RemotePort, s.LocalPort))
 	}
 	return remotes
 }
 
-// Sync (re)conecta o client Chisel quando a config muda; caso contrário, no-op.
+// Sync (re)connects the Chisel client when the config changes; otherwise it's a no-op.
 func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -61,15 +61,15 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 		return nil // nada mudou
 	}
 
-	// Chisel não troca remotes ao vivo — reinicia o client com a nova config.
+	// Chisel can't swap remotes live — restart the client with the new config.
 	if t.client != nil {
 		_ = t.client.Close()
 		t.client = nil
 	}
 	t.current = key
 
-	// Sem servidor informado ou sem nada autorizado ainda: espera o próximo
-	// heartbeat (control plane provisiona o túnel na Fase 2).
+	// No server given, or nothing authorized yet: wait for the next heartbeat
+	// (the control plane provisions the tunnel in phase 2).
 	if cfg.Tunnel.Server == "" || len(remotes) == 0 {
 		return nil
 	}
@@ -86,7 +86,7 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 	if err != nil {
 		return err
 	}
-	// Start conecta e mantém o túnel vivo em background (com retry); não bloqueia.
+	// Start connects and keeps the tunnel alive in the background (with retry); non-blocking.
 	if err := cl.Start(ctx); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 	return nil
 }
 
-// Close derruba o túnel.
+// Close tears the tunnel down.
 func (t *ChiselTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()

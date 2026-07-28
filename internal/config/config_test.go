@@ -37,6 +37,6 @@ func TestSaveLoadRoundtripAndPerms(t *testing.T) {
 
 func TestEnrolledFalseWhenIncomplete(t *testing.T) {
 	if (&Config{AgentID: "x"}).Enrolled() {
-		t.Fatal("sem segredo não deveria ser enrolled")
+		t.Fatal("without a secret it should not be enrolled")
 	}
 }

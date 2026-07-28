@@ -1,9 +1,9 @@
-// Package transport mantém os túneis reversos que expõem os serviços locais do
-// cliente (localhost:5432, localhost:22…) pro worker do Backify.
+// Package transport keeps the reverse tunnels that expose the customer's local
+// services (localhost:5432, localhost:22…) to the Backify worker.
 //
-// A implementação v1 é Chisel (ver chisel.go), embutida como client. Ela fica
-// ATRÁS desta interface de propósito: trocar por FRP depois é só uma nova
-// implementação, sem mexer no daemon. Ver README > Transporte.
+// The v1 implementation is Chisel (see chisel.go), embedded as a client. It sits
+// BEHIND this interface on purpose: swapping in FRP later is just a new
+// implementation, with no changes to the daemon. See README > Transport.
 package transport
 
 import (
@@ -13,18 +13,18 @@ import (
 	"github.com/backifyapp/bridge/internal/api"
 )
 
-// Transport ajusta os túneis para expor exatamente o que o Backify autorizou.
-// Sync deve ser idempotente (chamado a cada heartbeat) e não bloquear.
+// Transport adjusts the tunnels to expose exactly what Backify authorized.
+// Sync must be idempotent (called on every heartbeat) and must not block.
 type Transport interface {
 	Sync(ctx context.Context, cfg *api.AgentConfig) error
 	Close() error
 }
 
-// Stub só registra o que exporia — útil pra rodar enroll → heartbeat ponta a
-// ponta sem um chisel-server (BACKIFY_BRIDGE_STUB=1).
+// Stub only logs what it would expose — handy to run enroll → heartbeat end to
+// end without a chisel-server (BACKIFY_BRIDGE_STUB=1).
 type Stub struct{}
 
-// Sync apenas loga os serviços que seriam expostos.
+// Sync just logs the services that would be exposed.
 func (Stub) Sync(_ context.Context, cfg *api.AgentConfig) error {
 	for _, s := range cfg.Services {
 		log.Printf("[transport:stub] exporia %s localhost:%d (bind remoto :%d) via %s",
@@ -33,5 +33,5 @@ func (Stub) Sync(_ context.Context, cfg *api.AgentConfig) error {
 	return nil
 }
 
-// Close não faz nada no stub.
+// Close is a no-op in the stub.
 func (Stub) Close() error { return nil }

@@ -13,7 +13,7 @@ func TestAssetNameMatchesReleaseNaming(t *testing.T) {
 		t.Fatalf("assetName=%q want=%q (tem que casar com o release.yml)", got, want)
 	}
 	if !strings.HasPrefix(got, "backify-bridge_") {
-		t.Fatal("prefixo do asset mudou — release.yml e updater ficariam incompatíveis")
+		t.Fatal("the asset prefix changed — release.yml and updater would be incompatible")
 	}
 }
 

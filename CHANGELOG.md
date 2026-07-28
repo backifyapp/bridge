@@ -1,46 +1,47 @@
 # Changelog
 
-Todas as mudanças relevantes deste projeto são documentadas aqui.
-Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/);
-versionamento [SemVer](https://semver.org/lang/pt-BR/).
+All notable changes to this project are documented here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Não lançado]
+## [Unreleased]
 
 ## [0.2.0] — 2026-07-27
 
-### Adicionado
-- **Backup e restore de Docker** (modo opt-in): volumes e containers.
-  - Helper HTTP local autenticado por HMAC, alcançável só pelo túnel
+### Added
+- **Docker backup and restore** (opt-in mode): volumes and containers.
+  - Local HTTP helper authenticated with HMAC, reachable only through the tunnel
     (`/docker/volumes`, `/docker/volume/{n}/export|import`,
     `/docker/container/{id}/inspect`, `/docker/container/run`, pause/unpause).
-  - Export de volume via container efêmero montando o volume `:ro`.
-  - Restore cria **volume/container com nome novo** por padrão (não sobrescreve
-    o que está em uso).
-- **Imagem oficial** `ghcr.io/backifyapp/bridge` (inclui `docker-cli`), para
-  rodar o agent em container com o socket do Docker montado.
-- **Inventário de frota** no heartbeat: OS, arquitetura, kernel, nº de CPUs,
-  memória total, IPs e versão do Docker — exibidos no painel.
-- **`backify-bridge update`**: baixa a última release, **valida o SHA-256** e
-  substitui o binário.
+  - Volume export through an ephemeral container mounting the volume `:ro`.
+  - Restore creates the **volume/container under a new name** by default (it
+    never overwrites what is in use).
+- **Official image** `ghcr.io/backifyapp/bridge` (bundles `docker-cli`), to run
+  the agent in a container with the Docker socket mounted.
+- **Fleet inventory** in the heartbeat: OS, architecture, kernel, CPU count,
+  total memory, IPs and Docker version — surfaced in the dashboard.
+- **`backify-bridge update`**: downloads the latest release, **verifies the
+  SHA-256** and replaces the binary.
 
-### Alterado
-- Requer Go 1.25 para compilar (dependência do cliente Chisel).
+### Changed
+- Requires Go 1.25 to build (Chisel client dependency).
 
 ## [0.1.0] — 2026-07-26
 
-### Adicionado
-- Primeira versão do **Backify Bridge**: agent de acesso via **túnel reverso**
-  (Chisel) para backup de bancos e arquivos sem abrir portas de entrada.
-- `enroll` (token de uso único → credenciais locais `0600`), `run` (daemon com
+### Added
+- First release of the **Backify Bridge**: a **reverse tunnel** (Chisel) access
+  agent for backing up databases and files without opening inbound ports.
+- `enroll` (single-use token → local `0600` credentials), `run` (daemon with
   heartbeat), `status`, `version`.
-- Autenticação **HMAC-SHA256** de todas as chamadas à API (o segredo nunca
-  trafega), com vetor de teste travado contra o backend.
-- Instalador `install.sh` + serviço `systemd` endurecido (usuário dedicado, sem
-  privilégios), binários Linux amd64/arm64 no GitHub Releases.
+- **HMAC-SHA256** authentication on every API call (the secret never travels),
+  with a test vector locked against the backend.
+- `install.sh` installer + hardened `systemd` service (dedicated, unprivileged
+  user), Linux amd64/arm64 binaries on GitHub Releases.
 
-### Correções
-- Túnel reverso passa a fazer bind em `0.0.0.0` (antes `127.0.0.1`, o que
-  tornava a porta inalcançável fora do container).
+### Fixed
+- The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
+  port unreachable from outside the container).
 
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/backifyapp/bridge/releases/tag/v0.2.0
 [0.1.0]: https://github.com/backifyapp/bridge/releases/tag/v0.1.0

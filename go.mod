@@ -2,8 +2,8 @@ module github.com/backifyapp/bridge
 
 go 1.25.0
 
-// Túnel reverso (TCP sobre HTTPS, cripto SSH). Rode `go mod tidy` para popular
-// o go.sum e as dependências transitivas.
+// Reverse tunnel (TCP over HTTPS, SSH crypto). Run `go mod tidy` to populate
+// go.sum and the transitive dependencies.
 require github.com/jpillora/chisel v1.11.8
 
 require (
