@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-28
+
 ### Added
 - **Volume size** (`GET /docker/volume/{name}/size`): measures the volume with
   `du` in an ephemeral read-only container, so the dashboard can estimate the
@@ -26,10 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   connect to the Docker daemon". The `--docker` drop-in adds `AF_UNIX`,
   `SupplementaryGroups=docker` and a `DOCKER_CONFIG` that is not under the
   `ProtectHome`-masked `/home`.
-
-## [0.2.2] — 2026-07-28
-
-### Fixed
 - **The tunnel never came up (`too many colons in address`).** The chisel client
   decides whether an address already carries a scheme with
   `HasPrefix(server, "http")` — not by looking for `://`. A valid
@@ -39,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the address over, so both spellings work.
 
 ### Changed
+- The update/security docs now use the **absolute path**
+  (`sudo /usr/local/bin/backify-bridge update`): on RHEL-family distros sudo
+  resets `PATH` to a `secure_path` without `/usr/local/bin`, so the short form
+  failed with "command not found".
+- The vendored chisel version is now stamped into the binary (it used to report
+  `0.0.0-src`, which the server logged as a version mismatch on a matched pair).
 - The transport used to go **silent** when it had no tunnel address or no remote
   port: a misconfigured control plane looked exactly like a healthy idle agent.
   It now logs why it is idle, and logs the address when it connects.
