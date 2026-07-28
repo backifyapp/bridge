@@ -5,17 +5,23 @@
 # Downloads the binary from GitHub Releases, installs it into /usr/local/bin,
 # creates the dedicated user + systemd service and, if --token is given,
 # enrolls this server.
+#
+# Add --docker to enable the Docker capability (volume/container backups). It
+# grants the agent access to the Docker socket, which is ROOT-EQUIVALENT on this
+# host — off by default, and only worth it if you enabled Docker in the panel.
 set -eu
 
 REPO="backifyapp/bridge"
 BIN="/usr/local/bin/backify-bridge"
 API_URL="${BACKIFY_API_URL:-https://srv.backify.app}"
 TOKEN=""
+DOCKER=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --token) TOKEN="$2"; shift 2 ;;
     --url)   API_URL="$2"; shift 2 ;;
+    --docker) DOCKER=1; shift ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -50,6 +56,27 @@ install -d -o backify-bridge -g backify-bridge -m 0700 /etc/backify-bridge
 echo "==> installing systemd service…"
 curl -fsSL "https://raw.githubusercontent.com/${REPO}/main/packaging/systemd/backify-bridge.service" \
   -o /etc/systemd/system/backify-bridge.service
+
+if [ "$DOCKER" -eq 1 ]; then
+  if ! getent group docker >/dev/null 2>&1; then
+    echo "--docker was given but there is no 'docker' group on this host." >&2
+    exit 1
+  fi
+  echo "==> enabling the Docker capability (root-equivalent access to the socket)…"
+  usermod -aG docker backify-bridge
+  # A drop-in, so upgrading the unit file never drops these.
+  install -d -m 0755 /etc/systemd/system/backify-bridge.service.d
+  cat > /etc/systemd/system/backify-bridge.service.d/docker.conf <<EOF
+[Service]
+# The Docker socket is a unix socket: without AF_UNIX in the allow list the
+# agent cannot open it at all, whatever the file permissions say.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SupplementaryGroups=docker
+# ProtectHome=true masks /home, and the docker CLI looks for ~/.docker/config.json.
+Environment=DOCKER_CONFIG=/etc/backify-bridge
+EOF
+fi
+
 systemctl daemon-reload
 
 if [ -n "$TOKEN" ]; then
@@ -57,6 +84,7 @@ if [ -n "$TOKEN" ]; then
   sudo -u backify-bridge "$BIN" enroll --token "$TOKEN" --url "$API_URL"
   systemctl enable --now backify-bridge
   echo "==> done. status: systemctl status backify-bridge"
+  [ "$DOCKER" -eq 1 ] || echo "    (Docker volumes/containers? reinstall with --docker)"
 else
   echo "==> installed. Enroll with:"
   echo "    sudo -u backify-bridge $BIN enroll --token <TOKEN>"

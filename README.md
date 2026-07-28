@@ -98,7 +98,13 @@ volume as `tar.gz` (through an ephemeral `:ro` container) and reads the containe
 config (`docker inspect`); restic runs on the worker. Restore recreates the
 volume/container under a **new name** by default.
 
-It needs the Docker socket — use the official image:
+It needs access to the Docker socket. Either install with `--docker`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/backifyapp/bridge/main/install.sh | sudo sh -s -- --token <YOUR_TOKEN> --docker
+```
+
+or run the official image with the socket mounted:
 
 ```sh
 docker run -d --name backify-bridge \

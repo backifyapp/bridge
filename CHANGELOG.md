@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `install.sh --docker` enables the Docker capability on a binary install: it
+  adds the agent to the `docker` group and drops in the systemd overrides the
+  socket needs. Off by default — socket access is root-equivalent on the host.
+
+### Fixed
+- **The Docker capability could not work on a binary install.** The hardened unit
+  allows only `AF_INET`/`AF_INET6`, so the agent could not open a unix socket at
+  all, whatever the file permissions said — `docker ps` failed with "Cannot
+  connect to the Docker daemon". The `--docker` drop-in adds `AF_UNIX`,
+  `SupplementaryGroups=docker` and a `DOCKER_CONFIG` that is not under the
+  `ProtectHome`-masked `/home`.
+
 ## [0.2.2] — 2026-07-28
 
 ### Fixed

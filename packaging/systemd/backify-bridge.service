@@ -21,6 +21,9 @@ PrivateTmp=true
 ReadWritePaths=/etc/backify-bridge
 ProtectKernelTunables=true
 ProtectControlGroups=true
+# AF_UNIX is deliberately absent: the agent only needs the network. The Docker
+# capability needs it (the socket) and adds it via the docker.conf drop-in that
+# `install.sh --docker` writes — do not add it here.
 RestrictAddressFamilies=AF_INET AF_INET6
 RestrictNamespaces=true
 
