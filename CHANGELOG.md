@@ -6,9 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Release as **0.3.0**: the Docker helper protocol changes incompatibly. Update
-the agents BEFORE the Backify worker that speaks protocol 2 is deployed (see
-the PR for the deploy order).
+## [0.3.0] — 2026-10-12
+
+The Docker helper protocol changes incompatibly: update the agents BEFORE the
+Backify worker that speaks protocol 2 is deployed.
 
 ### Security
 - **The Docker helper signature now covers the request body (protocol 2).**
@@ -119,7 +120,8 @@ the PR for the deploy order).
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/backifyapp/bridge/releases/tag/v0.3.0
 [0.2.2]: https://github.com/backifyapp/bridge/releases/tag/v0.2.2
 [0.2.1]: https://github.com/backifyapp/bridge/releases/tag/v0.2.1
 [0.2.0]: https://github.com/backifyapp/bridge/releases/tag/v0.2.0
