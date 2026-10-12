@@ -7,13 +7,15 @@ package dockerhttp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/backifyapp/bridge/internal/docker"
 )
 
-// Handler monta o roteador do helper, todo autenticado por HMAC.
+// Handler monta o roteador do helper, todo autenticado por HMAC (protocolo 2:
+// a assinatura cobre o corpo — ver authMiddleware).
 func Handler(secret string) http.Handler {
 	nc := newNonceCache()
 	mux := http.NewServeMux()
@@ -34,7 +36,11 @@ func Handler(secret string) http.Handler {
 	// Tamanho de um volume (estimativa do painel). Medido no host com `du`,
 	// sem trafegar dados pelo túnel.
 	mux.HandleFunc("GET /docker/volume/{name}/size", auth(func(w http.ResponseWriter, r *http.Request) {
-		n, err := docker.VolumeSize(r.Context(), r.PathValue("name"))
+		name, ok := pathName(w, r, "name")
+		if !ok {
+			return
+		}
+		n, err := docker.VolumeSize(r.Context(), name)
 		if fail(w, err) {
 			return
 		}
@@ -50,8 +56,12 @@ func Handler(secret string) http.Handler {
 	}))
 
 	mux.HandleFunc("GET /docker/volume/{name}/export", auth(func(w http.ResponseWriter, r *http.Request) {
+		name, ok := pathName(w, r, "name")
+		if !ok {
+			return
+		}
 		w.Header().Set("Content-Type", "application/gzip")
-		if err := docker.ExportVolume(r.Context(), r.PathValue("name"), w); err != nil {
+		if err := docker.ExportVolume(r.Context(), name, w); err != nil {
 			// headers may already be sent; the worker detects the truncated stream.
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -59,15 +69,25 @@ func Handler(secret string) http.Handler {
 
 	mux.HandleFunc("POST /docker/volume/{name}/import", auth(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		if err := docker.ImportVolume(r.Context(), r.PathValue("name"), r.Body); err != nil {
+		name, ok := pathName(w, r, "name")
+		if !ok {
+			return
+		}
+		// r.Body is the spooled, hash-verified copy (authMiddleware): nothing
+		// reaches `tar -x` before the whole body matched the signature.
+		if err := docker.ImportVolume(r.Context(), name, r.Body); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, map[string]string{"volume": r.PathValue("name")})
+		writeJSON(w, map[string]string{"volume": name})
 	}))
 
 	mux.HandleFunc("GET /docker/container/{id}/inspect", auth(func(w http.ResponseWriter, r *http.Request) {
-		raw, err := docker.InspectContainer(r.Context(), r.PathValue("id"))
+		id, ok := pathName(w, r, "id")
+		if !ok {
+			return
+		}
+		raw, err := docker.InspectContainer(r.Context(), id)
 		if fail(w, err) {
 			return
 		}
@@ -77,8 +97,12 @@ func Handler(secret string) http.Handler {
 
 	mux.HandleFunc("POST /docker/container/run", auth(func(w http.ResponseWriter, r *http.Request) {
 		var spec docker.RunSpec
-		if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&spec); err != nil {
 			http.Error(w, "invalid spec", http.StatusBadRequest)
+			return
+		}
+		if err := docker.ValidateRunSpec(spec); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		id, err := docker.RunContainer(r.Context(), spec)
@@ -89,14 +113,22 @@ func Handler(secret string) http.Handler {
 	}))
 
 	mux.HandleFunc("POST /docker/container/{id}/pause", auth(func(w http.ResponseWriter, r *http.Request) {
-		if fail(w, docker.Pause(r.Context(), r.PathValue("id"))) {
+		id, ok := pathName(w, r, "id")
+		if !ok {
+			return
+		}
+		if fail(w, docker.Pause(r.Context(), id)) {
 			return
 		}
 		writeJSON(w, map[string]bool{"paused": true})
 	}))
 
 	mux.HandleFunc("POST /docker/container/{id}/unpause", auth(func(w http.ResponseWriter, r *http.Request) {
-		if fail(w, docker.Unpause(r.Context(), r.PathValue("id"))) {
+		id, ok := pathName(w, r, "id")
+		if !ok {
+			return
+		}
+		if fail(w, docker.Unpause(r.Context(), id)) {
 			return
 		}
 		writeJSON(w, map[string]bool{"paused": false})
@@ -123,6 +155,17 @@ func Serve(ctx context.Context, addr, secret string) error {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// pathName reads a {name}/{id} path value and refuses (400) anything outside
+// Docker's name grammar: "/etc" would be a host bind mount, "-f=…" a flag.
+func pathName(w http.ResponseWriter, r *http.Request, key string) (string, bool) {
+	v := r.PathValue(key)
+	if !docker.ValidName(v) {
+		http.Error(w, "nome inválido", http.StatusBadRequest)
+		return "", false
+	}
+	return v, true
 }
 
 // fail escreve 500 e retorna true se err != nil.

@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Release as **0.3.0**: the Docker helper protocol changes incompatibly. Update
+the agents BEFORE the Backify worker that speaks protocol 2 is deployed (see
+the PR for the deploy order).
+
+### Security
+- **The Docker helper signature now covers the request body (protocol 2).**
+  Protocol 1 signed only `METHOD\nPATH\nTS\nNONCE`: whoever could tamper with a
+  request between the worker and the helper kept the signature valid while
+  swapping the body — a volume import (`tar -x` into the volume) or a container
+  spec (`docker run`, which could bind-mount the host's `/`). The canonical
+  string is now `BACKIFY-BRIDGE-HMAC-SHA256-V2\nMETHOD\nPATH\nQUERY\nTS\nNONCE\nSHA256(body)`,
+  with the body hash in `X-Backify-Content-SHA256`. The body is spooled to a
+  private temp file while hashed and handed to the handler only if it matches;
+  the file is always removed. Every helper response carries
+  `X-Backify-Protocol: 2`; protocol-1 requests are refused with an explicit
+  version error.
+- Header formats are checked (nonce 16–64 of `[A-Za-z0-9_-]`, numeric timestamp,
+  hex signature/hash) and the nonce TTL now covers the whole ±300s window.
+- **Names and container specs are validated on the helper.** A volume name of
+  `/etc` used to become a host bind mount in `-v <name>:/data`, and a container
+  spec could carry `"/:/host"` or values starting with `-` (docker flags). Names
+  must follow Docker's grammar and a spec may only mount named volumes.
+
+### Note
+- A volume import now needs free space in `$TMPDIR` (a private `/tmp` under the
+  systemd unit) for the compressed archive while it is verified.
+
 ## [0.2.2] — 2026-07-28
 
 ### Added

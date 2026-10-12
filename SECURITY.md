@@ -41,6 +41,15 @@ When the **Docker** capability is enabled, the agent uses the host's Docker
 socket — which gives it control over that server's containers and volumes. This
 is optional and only relevant if you want volume/container backups. The HTTP
 helper that does this listens **on `127.0.0.1` only**, requires an HMAC
-signature, and is reachable exclusively through the tunnel. Container config
+signature, and is reachable exclusively through the tunnel.
+
+The helper speaks signature **protocol 2**: the signature covers the method,
+the path, the query, the timestamp, a single-use nonce and the **SHA-256 of the
+request body**. A request body (volume import, container spec) is spooled to a
+private temp file and only acted on after its hash matches the signed one; the
+nonce is only stored after the signature checks out. Volume/container names
+must follow Docker's name grammar (never a host path or a flag), and a
+container spec may only mount **named volumes**. Requests signed with the old
+protocol 1 are refused with an explicit version error. Container config
 (`docker inspect`) may contain environment variables holding secrets; they go
 into the backup, always encrypted.
