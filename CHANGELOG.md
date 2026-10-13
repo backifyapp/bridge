@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Requires a Backify API that accepts agent signature protocol 2 (deploy the API
+first; it keeps accepting protocol 1 during the transition).
+
+### Security
+- **Agent → API calls are signed with protocol 2 (body in the HMAC).** The
+  heartbeat used protocol 1 (`METHOD\nPATH\nTS\nNONCE`): whoever could tamper
+  with a request inside the time window could change what the agent reports
+  (version, hostname, inventory) while keeping the signature valid. The
+  canonical string is now
+  `BACKIFY-AGENT-API-HMAC-SHA256-V2\nMETHOD\nPATH\nQUERY\nTS\nNONCE\nSHA256(body)`,
+  with the body hash in `X-Backify-Content-SHA256`. The scheme line differs from
+  the Docker helper's, so a signature from one channel is never valid on the
+  other. A shared vector pins the Go and backend implementations.
+- A signed call refused with 401 and no `X-Backify-Protocol` header now reports
+  "the Backify API predates protocol 2" instead of looking like a wrong secret.
+
 ## [0.3.0] — 2026-10-12
 
 The Docker helper protocol changes incompatibly: update the agents BEFORE the
