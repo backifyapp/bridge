@@ -29,6 +29,11 @@ sudo /usr/local/bin/backify-bridge update && sudo systemctl restart backify-brid
   opened on your server.
 - Every API call is signed with **HMAC-SHA256** — the secret **never travels**;
   there is a clock window (±300s) and a single-use nonce (replay protection).
+  Since 0.4.0 the signature (protocol 2,
+  `BACKIFY-AGENT-API-HMAC-SHA256-V2\nMETHOD\nPATH\nQUERY\nTS\nNONCE\nSHA256(body)`)
+  also covers the request body; the API checks the body it read against the
+  signed hash before burning the nonce. Its scheme line differs from the Docker
+  helper's, so a signature made for one channel is never valid on the other.
 - The agent secret lives in `/etc/backify-bridge/bridge.json` with mode `0600`;
   the systemd service runs as a dedicated, unprivileged user.
 - Tunnel-exposed ports are **whitelisted per agent** on the server — one agent

@@ -149,6 +149,23 @@ func TestAuthV1RequestRefusedWithVersionError(t *testing.T) {
 	}
 }
 
+// The agent's secret also signs its calls to the API (sign.SchemeAPIV2). A
+// signature made for that channel is never accepted by the helper.
+func TestAuthAgentAPISignatureRefused(t *testing.T) {
+	var s seen
+	ts, nonce, body := now(), freshNonce(), `{"image":"alpine"}`
+	req := httptest.NewRequest("POST", "/docker/container/run", strings.NewReader(body))
+	req.Header.Set(sign.HeaderTimestamp, ts)
+	req.Header.Set(sign.HeaderNonce, nonce)
+	req.Header.Set(sign.HeaderContentSHA256, sha(body))
+	req.Header.Set(sign.HeaderSignature, sign.SignatureAPIV2(secret, "POST", "/docker/container/run", "", ts, nonce, sha(body)))
+	rr := httptest.NewRecorder()
+	newHandler(&s)(rr, req)
+	if rr.Code != 401 || s.called {
+		t.Fatalf("agent → API signature on the helper: code=%d called=%v", rr.Code, s.called)
+	}
+}
+
 func TestAuthMissingHeaders(t *testing.T) {
 	var s seen
 	rr := httptest.NewRecorder()

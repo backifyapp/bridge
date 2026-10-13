@@ -105,7 +105,9 @@ Stops and removes the service, the binary, the credentials in
    ports.
 
 Every API call (except enroll) is signed with **HMAC-SHA256** — the secret
-**never travels**, it only signs. See [`internal/sign`](internal/sign).
+**never travels**, it only signs. Since 0.4.0 the signature (protocol 2) covers
+the method, path, query, timestamp, nonce **and the SHA-256 of the body**, so
+the API rejects a heartbeat altered in transit. See [`internal/sign`](internal/sign).
 
 ## Docker mode (volumes and containers)
 
