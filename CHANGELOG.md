@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-13
+
 Requires a Backify API that accepts agent signature protocol 2 (deploy the API
 first; it keeps accepting protocol 1 during the transition).
 
@@ -136,7 +138,8 @@ Backify worker that speaks protocol 2 is deployed.
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/backifyapp/bridge/releases/tag/v0.4.0
 [0.3.0]: https://github.com/backifyapp/bridge/releases/tag/v0.3.0
 [0.2.2]: https://github.com/backifyapp/bridge/releases/tag/v0.2.2
 [0.2.1]: https://github.com/backifyapp/bridge/releases/tag/v0.2.1
