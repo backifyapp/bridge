@@ -20,8 +20,8 @@ sudo /usr/local/bin/backify-bridge update && sudo systemctl restart backify-brid
 
 | Version | Supported |
 |---|---|
-| 0.2.x | ✅ |
-| 0.1.x | ❌ (please update) |
+| 0.5.x | ✅ |
+| < 0.5 | ❌ (please update) |
 
 ## Security model (summary)
 
@@ -36,9 +36,17 @@ sudo /usr/local/bin/backify-bridge update && sudo systemctl restart backify-brid
   helper's, so a signature made for one channel is never valid on the other.
 - The agent secret lives in `/etc/backify-bridge/bridge.json` with mode `0600`;
   the systemd service runs as a dedicated, unprivileged user.
+- Since 0.5.0 that secret is only a **root**: the tunnel password, the API key
+  and the Docker helper key are derived from it (HKDF-SHA256, one label per
+  channel), and each channel only ever sees its own key. The chisel-server
+  stores the tunnel password in clear (`users.json`); leaking it no longer
+  gives the API or helper keys. Signatures use protocol 3
+  (`…-HMAC-SHA256-V3` scheme lines, `X-Backify-Protocol: 3`).
 - Tunnel-exposed ports are **whitelisted per agent** on the server — one agent
   cannot reach another agent's ports.
-- `update` verifies the published **SHA-256** before replacing the binary.
+- `update` verifies the published **SHA-256** before replacing the binary,
+  downloads from the exact tag it resolved, accepts only `vX.Y.Z` tags and
+  refuses downgrades.
 
 ### Docker mode (opt-in)
 
@@ -58,3 +66,37 @@ container spec may only mount **named volumes**. Requests signed with the old
 protocol 1 are refused with an explicit version error. Container config
 (`docker inspect`) may contain environment variables holding secrets; they go
 into the backup, always encrypted.
+
+Since 0.5.0 the helper also enforces, with no configuration: no published
+ports, no restart policy and no unknown fields in a restore's container spec
+(so no host network, privileged mode, capabilities or devices); only images
+already present on the host (`--pull=never`); imports only into **new**
+volumes; a 1 MiB cap on the spec and a free-space check before spooling an
+import. A volume export reports its exit status in the `X-Backify-Exit-Code`
+HTTP trailer, so a truncated archive is never taken as a complete backup.
+
+An **optional local allowlist** in `bridge.json` restricts what Backify can
+touch, whatever it signs:
+
+```json
+"docker": {
+  "volumes":    ["app-*"],
+  "containers": ["web", "db"],
+  "images":     ["postgres:16-alpine", "ghcr.io/acme/*"]
+}
+```
+
+Each list is enforced only when present (empty = nothing allowed); entries are
+exact names or globs. Restores create `<volume>-restored-<timestamp>`, so use a
+glob. With `images`, only those images run, and they may be pulled.
+
+## Update authenticity
+
+`update` and `install.sh` check the SHA-256 published **in the same release**
+as the binary. That catches a corrupted download, not a malicious release:
+whoever can publish a release can publish both files. Real authenticity needs a
+signature checked against a public key embedded in the binary. The planned
+approach is **minisign** (small, no extra infrastructure): the release workflow
+signs each binary with a key kept in an Actions secret, and the updater
+verifies the `.minisig` against the embedded public key before installing. It
+is not enabled yet because the signing key's custody has to be decided first.

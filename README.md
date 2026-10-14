@@ -105,9 +105,13 @@ Stops and removes the service, the binary, the credentials in
    ports.
 
 Every API call (except enroll) is signed with **HMAC-SHA256** — the secret
-**never travels**, it only signs. Since 0.4.0 the signature (protocol 2) covers
-the method, path, query, timestamp, nonce **and the SHA-256 of the body**, so
-the API rejects a heartbeat altered in transit. See [`internal/sign`](internal/sign).
+**never travels**, it only signs. The signature covers the method, path, query,
+timestamp, nonce **and the SHA-256 of the body**, so the API rejects a heartbeat
+altered in transit. Since 0.5.0 (protocol 3) the enroll secret is only a root:
+the tunnel password, the API key and the Docker helper key are each derived
+from it with HKDF, so the chisel-server (which stores the tunnel password in
+clear) never holds anything that signs API or helper calls. See
+[`internal/sign`](internal/sign).
 
 ## Docker mode (volumes and containers)
 
@@ -138,6 +142,24 @@ docker run -d --name backify-bridge \
 > Only enable it where you trust Backify. For a database running in a container,
 > prefer the database source over the tunnel.
 
+Safe defaults, no configuration needed: a restore only creates **new**
+volumes/containers, never publishes ports or sets a restart policy, and only
+runs images already on the host (`docker pull` it first when restoring onto a
+new server). To restrict further, add a local allowlist to
+`/etc/backify-bridge/bridge.json`:
+
+```json
+"docker": {
+  "volumes":    ["app-*"],
+  "containers": ["web", "db"],
+  "images":     ["postgres:16-alpine"]
+}
+```
+
+Each list applies only when present (empty = nothing allowed); names or globs.
+Restored volumes are named `<volume>-restored-<timestamp>`, so use a glob. See
+[SECURITY.md](SECURITY.md).
+
 ## Transport
 
 The tunnel transport sits behind the [`transport.Transport`](internal/transport/transport.go)
@@ -147,7 +169,8 @@ Bridge binary. The interface is deliberate: moving to **FRP** later is a new
 implementation, with no changes to the daemon.
 
 The agent authenticates against the chisel-server with its own identity
-(`agentID:secret`), validated there by a plugin against the Backify API. Each
+(`agentID:<tunnel password>`, where the password is derived from the agent
+secret for this channel only — see [`internal/sign/keys.go`](internal/sign/keys.go)). Each
 service becomes a reverse tunnel `R:<server bind>:localhost:<local port>` — the
 bind is assigned by the control plane and delivered in the heartbeat.
 

@@ -6,6 +6,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Becomes **0.5.0**. Requires a Backify backend that speaks protocol 3 (deploy
+the backend first; it keeps accepting older Bridges during the transition).
+
+### Security
+- **One key per channel (protocol 3).** Up to 0.4.0 the enroll secret was used
+  as is for three things: the chisel password (stored in clear in the
+  chisel-server's `users.json`, an internet-facing service), the agent → API
+  HMAC and the worker → Docker helper HMAC. Reading that file, or code
+  execution on the chisel-server, handed over every agent's secret — enough to
+  sign Docker helper calls on any customer host. The enroll secret is now only
+  a root: the chisel password, the API key and the helper key are derived from
+  it with HKDF-SHA256 (`backify/chisel-auth/v1`, `backify/agent-api/v1`,
+  `backify/docker-helper/v1`). The API and helper signatures use new scheme
+  lines (`BACKIFY-AGENT-API-HMAC-SHA256-V3`, `BACKIFY-BRIDGE-HMAC-SHA256-V3`)
+  and say `X-Backify-Protocol: 3`; the helper only accepts protocol 3. Shared
+  vectors pin the derivation and both signatures to the backend.
+- **A failed volume export is no longer a complete one.** The helper streams
+  the archive with a 200 before `docker run … tar` finishes; when tar died
+  midway, the error text was written into the gzip body and the stream ended
+  cleanly, so the backup looked successful. The exit status now goes in the
+  `X-Backify-Exit-Code` HTTP trailer (`X-Backify-Exit-Error` on failure), and
+  the error is never written into the archive.
+- Exporting or measuring a volume that does not exist answers 404 (`docker run
+  -v <name>:/data` used to create it empty and back that up).
+- **Safe defaults for restores, with no configuration:** the container spec
+  refuses published ports, restart policies and unknown fields (host network,
+  privileged, capabilities, devices…); the image must already be on the host
+  (`docker run --pull=never`); a volume import only creates new volumes (409 on
+  an existing one).
+- **Optional local allowlist** (`"docker": {"volumes", "containers", "images"}`
+  in `bridge.json`), enforced when present; listings show only what is allowed;
+  an invalid pattern keeps the helper down. Re-enrolling preserves it.
+- Body limits before anything is spooled: 1 MiB for the container spec; the
+  import requires `Content-Length` and enough free space in `$TMPDIR` (256 MiB
+  reserve), checked before writing a byte.
+- `update` downloads from the exact tag it resolved (never `latest/download`
+  twice), accepts only `vX.Y.Z` tags, refuses downgrades and caps the download
+  size. `install.sh` resolves the tag once and checks the published SHA-256.
+  Both are integrity checks, not authenticity: see SECURITY.md.
+
 ## [0.4.0] — 2026-10-13
 
 Requires a Backify API that accepts agent signature protocol 2 (deploy the API
