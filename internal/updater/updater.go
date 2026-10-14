@@ -1,6 +1,15 @@
 // Package updater downloads and installs the latest Bridge release, verifying
 // the published sha256 before swapping the binary. Easy manual update
 // (`backify-bridge update`); auto-update on heartbeat comes later.
+//
+// What the checksum does and does not prove: the binary and its .sha256 come
+// from the same GitHub release, so the checksum only catches a corrupted
+// download — whoever can publish a release can publish both. Authenticity
+// needs a signature checked against a key embedded in this binary (minisign or
+// cosign; see SECURITY.md → "Update authenticity"). Until then, the updater at
+// least downloads from the EXACT tag it resolved (never "latest/download",
+// which could move between the two requests), accepts only vX.Y.Z tags and
+// refuses to go back to an older version.
 package updater
 
 import (
@@ -11,7 +20,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +30,39 @@ import (
 const repo = "backifyapp/bridge"
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
+
+// maxAssetBytes caps a download (the binary is ~15 MB).
+const maxAssetBytes = 200 << 20
+
+var tagRe = regexp.MustCompile(`^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})$`)
+
+// assetURL is the download URL of this platform's binary IN THE GIVEN TAG.
+func assetURL(tag string) string {
+	return "https://github.com/" + repo + "/releases/download/" + tag + "/" + assetName()
+}
+
+// semver parses "vX.Y.Z" (ok=false otherwise, e.g. "dev").
+func semver(tag string) ([3]int, bool) {
+	m := tagRe.FindStringSubmatch(tag)
+	if m == nil {
+		return [3]int{}, false
+	}
+	var v [3]int
+	for i := range v {
+		v[i], _ = strconv.Atoi(m[i+1])
+	}
+	return v, true
+}
+
+// older reports whether a < b (both valid semver tags).
+func older(a, b [3]int) bool {
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return false
+}
 
 // assetName is the name of the binary published for this OS/arch.
 func assetName() string {
@@ -54,6 +98,9 @@ func latestTag() (string, error) {
 	if r.TagName == "" {
 		return "", fmt.Errorf("nenhuma release encontrada")
 	}
+	if _, ok := semver(r.TagName); !ok {
+		return "", fmt.Errorf("tag de release inesperada %q (esperado vX.Y.Z)", r.TagName)
+	}
 	return r.TagName, nil
 }
 
@@ -66,7 +113,14 @@ func download(url string) ([]byte, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAssetBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxAssetBytes {
+		return nil, fmt.Errorf("download %s: maior que %d bytes", url, maxAssetBytes)
+	}
+	return b, nil
 }
 
 // Run installs the latest version if it differs from the current one. It returns
@@ -79,8 +133,15 @@ func Run(currentVersion string) (tag string, updated bool, err error) {
 	if tag == currentVersion {
 		return tag, false, nil
 	}
+	if cur, ok := semver(currentVersion); ok {
+		if next, _ := semver(tag); older(next, cur) {
+			return "", false, fmt.Errorf("a release mais recente (%s) é anterior à instalada (%s): recusando o downgrade", tag, currentVersion)
+		}
+	}
 
-	base := "https://github.com/" + repo + "/releases/latest/download/" + assetName()
+	// From the tag just resolved — "latest/download" could point to another
+	// release by the time the second request is made.
+	base := assetURL(tag)
 	bin, err := download(base)
 	if err != nil {
 		return "", false, err
