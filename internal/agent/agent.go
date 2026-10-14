@@ -55,12 +55,21 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 				if svc := findDockerService(acfg.Services); svc != nil {
 					dockerHelperUp = true
 					addr := fmt.Sprintf("127.0.0.1:%d", svc.LocalPort)
-					go func() {
-						log.Printf("[agent] helper docker ouvindo em %s", addr)
-						if err := dockerhttp.Serve(ctx, addr, cfg.HMACSecret); err != nil {
-							log.Printf("[agent] helper docker parou: %v", err)
+					// A broken local allowlist must not degrade into "no
+					// allowlist": the helper stays down until it is fixed.
+					if err := cfg.Docker.Validate(); err != nil {
+						log.Printf("[agent] helper docker NÃO iniciado: allowlist local inválida em %s: %v", config.Path(), err)
+					} else {
+						if cfg.Docker != nil {
+							log.Printf("[agent] helper docker com allowlist local (%s → docker)", config.Path())
 						}
-					}()
+						go func() {
+							log.Printf("[agent] helper docker ouvindo em %s", addr)
+							if err := dockerhttp.Serve(ctx, addr, cfg.HMACSecret, cfg.Docker); err != nil {
+								log.Printf("[agent] helper docker parou: %v", err)
+							}
+						}()
+					}
 				}
 			}
 		}

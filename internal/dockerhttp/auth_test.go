@@ -18,6 +18,9 @@ import (
 
 const secret = "s3cr3t"
 
+// helperKey is what the worker signs with since protocol 3 (never the secret).
+var helperKey = sign.HelperKey(secret)
+
 func sha(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
@@ -32,8 +35,9 @@ func freshNonce() string {
 	return "nonce-de-teste-" + strconv.Itoa(1000+nonceSeq)
 }
 
-// signedReq builds a protocol-2 request exactly as the worker does: the body
-// hash goes into the signature and into X-Backify-Content-SHA256.
+// signedReq builds a protocol-3 request exactly as the worker does: the body
+// hash goes into the signature and into X-Backify-Content-SHA256, the key is
+// the helper's, and X-Backify-Protocol says 3.
 func signedReq(method, target, body, ts, nonce string) *http.Request {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	hash := sha(body)
@@ -43,7 +47,8 @@ func signedReq(method, target, body, ts, nonce string) *http.Request {
 	req.Header.Set(sign.HeaderTimestamp, ts)
 	req.Header.Set(sign.HeaderNonce, nonce)
 	req.Header.Set(sign.HeaderContentSHA256, hash)
-	req.Header.Set(sign.HeaderSignature, sign.SignatureV2(secret, method, req.URL.EscapedPath(), req.URL.RawQuery, ts, nonce, hash))
+	req.Header.Set(sign.HeaderProtocol, "3")
+	req.Header.Set(sign.HeaderSignature, sign.SignatureV3(helperKey, method, req.URL.EscapedPath(), req.URL.RawQuery, ts, nonce, hash))
 	return req
 }
 
@@ -55,7 +60,7 @@ type seen struct {
 
 func newHandler(s *seen) http.HandlerFunc {
 	nc := newNonceCache()
-	return authMiddleware(secret, nc, func(w http.ResponseWriter, r *http.Request) {
+	return authMiddleware(helperKey, nc, bodyRule{max: 64 << 20}, func(w http.ResponseWriter, r *http.Request) {
 		s.called = true
 		b, _ := io.ReadAll(r.Body)
 		s.body = string(b)
@@ -70,8 +75,8 @@ func TestAuthValidGetPasses(t *testing.T) {
 	if rr.Code != 200 || !s.called {
 		t.Fatalf("a valid signature should pass, got %d", rr.Code)
 	}
-	if rr.Header().Get(sign.HeaderProtocol) != "2" {
-		t.Fatalf("every response must carry %s: 2", sign.HeaderProtocol)
+	if rr.Header().Get(sign.HeaderProtocol) != "3" {
+		t.Fatalf("every response must carry %s: 3", sign.HeaderProtocol)
 	}
 }
 
@@ -149,8 +154,52 @@ func TestAuthV1RequestRefusedWithVersionError(t *testing.T) {
 	}
 }
 
-// The agent's secret also signs its calls to the API (sign.SchemeAPIV2). A
-// signature made for that channel is never accepted by the helper.
+// Protocol 2 (worker before per-channel keys): signed with the enroll secret.
+// Refused with a version error — it is exactly what a leaked secret would sign.
+func TestAuthV2RequestRefusedWithVersionError(t *testing.T) {
+	var s seen
+	ts, nonce := now(), freshNonce()
+	req := httptest.NewRequest("GET", "/docker/ping", nil)
+	req.Header.Set(sign.HeaderTimestamp, ts)
+	req.Header.Set(sign.HeaderNonce, nonce)
+	req.Header.Set(sign.HeaderContentSHA256, sign.EmptySHA256)
+	req.Header.Set(sign.HeaderSignature, sign.SignatureV2(secret, "GET", "/docker/ping", "", ts, nonce, sign.EmptySHA256))
+	rr := httptest.NewRecorder()
+	newHandler(&s)(rr, req)
+	if rr.Code != 401 || s.called || !strings.Contains(rr.Body.String(), "protocolo de assinatura 2") {
+		t.Fatalf("v2 request: code=%d called=%v body=%q", rr.Code, s.called, rr.Body.String())
+	}
+	if rr.Header().Get(sign.HeaderProtocol) != "3" {
+		t.Fatal("the refusal must announce protocol 3, so the worker can say what to update")
+	}
+}
+
+// The heart of the fix: only the helper key signs helper calls. Neither the
+// enroll secret nor the chisel password (in clear in the chisel-server's
+// users.json) nor the API key is accepted, even in a well-formed v3 request.
+func TestAuthOnlyTheHelperKeySigns(t *testing.T) {
+	for name, key := range map[string]string{
+		"enroll secret":   secret,
+		"chisel password": sign.ChiselPassword(secret),
+		"API key":         sign.APIKey(secret),
+	} {
+		var s seen
+		ts, nonce, body := now(), freshNonce(), `{"image":"alpine"}`
+		req := httptest.NewRequest("POST", "/docker/container/run", strings.NewReader(body))
+		req.Header.Set(sign.HeaderTimestamp, ts)
+		req.Header.Set(sign.HeaderNonce, nonce)
+		req.Header.Set(sign.HeaderContentSHA256, sha(body))
+		req.Header.Set(sign.HeaderProtocol, "3")
+		req.Header.Set(sign.HeaderSignature, sign.SignatureV3(key, "POST", "/docker/container/run", "", ts, nonce, sha(body)))
+		rr := httptest.NewRecorder()
+		newHandler(&s)(rr, req)
+		if rr.Code != 401 || s.called {
+			t.Errorf("%s: code=%d called=%v (want 401, not called)", name, rr.Code, s.called)
+		}
+	}
+}
+
+// A signature made for the agent → API channel is never accepted by the helper.
 func TestAuthAgentAPISignatureRefused(t *testing.T) {
 	var s seen
 	ts, nonce, body := now(), freshNonce(), `{"image":"alpine"}`
@@ -158,7 +207,8 @@ func TestAuthAgentAPISignatureRefused(t *testing.T) {
 	req.Header.Set(sign.HeaderTimestamp, ts)
 	req.Header.Set(sign.HeaderNonce, nonce)
 	req.Header.Set(sign.HeaderContentSHA256, sha(body))
-	req.Header.Set(sign.HeaderSignature, sign.SignatureAPIV2(secret, "POST", "/docker/container/run", "", ts, nonce, sha(body)))
+	req.Header.Set(sign.HeaderProtocol, "3")
+	req.Header.Set(sign.HeaderSignature, sign.SignatureAPIV3(helperKey, "POST", "/docker/container/run", "", ts, nonce, sha(body)))
 	rr := httptest.NewRecorder()
 	newHandler(&s)(rr, req)
 	if rr.Code != 401 || s.called {
@@ -234,7 +284,7 @@ func TestAuthReplay(t *testing.T) {
 // requests do not grow the cache.
 func TestAuthNonceOnlyAfterSignature(t *testing.T) {
 	nc := newNonceCache()
-	h := authMiddleware(secret, nc, func(w http.ResponseWriter, r *http.Request) {})
+	h := authMiddleware(helperKey, nc, noBody, func(w http.ResponseWriter, r *http.Request) {})
 	for i := 0; i < 50; i++ {
 		req := signedReq("GET", "/docker/ping", "", now(), freshNonce())
 		req.Header.Set(sign.HeaderSignature, strings.Repeat("0", 64))
@@ -260,4 +310,63 @@ func TestAuthNoTempFilesLeft(t *testing.T) {
 		t.Fatalf("temp files left: %v", left)
 	}
 	_ = os.Remove(dir)
+}
+
+// ── Body limits (spooled before the hash is known to match) ─────────────────
+
+func TestAuthJSONBodyOverLimitRefused(t *testing.T) {
+	var called bool
+	h := authMiddleware(helperKey, newNonceCache(), jsonBody, func(w http.ResponseWriter, r *http.Request) { called = true })
+	big := strings.Repeat("x", (1<<20)+1)
+	rr := httptest.NewRecorder()
+	h(rr, signedReq("POST", "/docker/container/run", big, now(), freshNonce()))
+	if rr.Code != http.StatusRequestEntityTooLarge || called {
+		t.Fatalf("JSON body over 1 MiB: code=%d called=%v", rr.Code, called)
+	}
+	// Chunked (no Content-Length) is cut by the reader, not trusted.
+	req := signedReq("POST", "/docker/container/run", big, now(), freshNonce())
+	req.ContentLength = -1
+	rr = httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge || called {
+		t.Fatalf("chunked JSON body over 1 MiB: code=%d called=%v", rr.Code, called)
+	}
+}
+
+func TestAuthImportNeedsContentLength(t *testing.T) {
+	var called bool
+	h := authMiddleware(helperKey, newNonceCache(), archiveBody, func(w http.ResponseWriter, r *http.Request) { called = true })
+	req := signedReq("POST", "/docker/volume/v/import", "tar", now(), freshNonce())
+	req.ContentLength = -1
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusLengthRequired || called {
+		t.Fatalf("import without Content-Length: code=%d called=%v", rr.Code, called)
+	}
+}
+
+// An import bigger than the free space (minus the reserve) is refused before
+// a single byte is spooled: a signer can no longer fill the customer's disk.
+func TestAuthImportBiggerThanFreeSpaceRefused(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	orig := freeSpace
+	t.Cleanup(func() { freeSpace = orig })
+	freeSpace = func(string) (uint64, bool) { return diskReserve + 10, true }
+
+	var called bool
+	h := authMiddleware(helperKey, newNonceCache(), archiveBody, func(w http.ResponseWriter, r *http.Request) { called = true })
+	rr := httptest.NewRecorder()
+	h(rr, signedReq("POST", "/docker/volume/v/import", strings.Repeat("t", 11), now(), freshNonce()))
+	if rr.Code != http.StatusInsufficientStorage || called {
+		t.Fatalf("import over free space: code=%d called=%v", rr.Code, called)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "backify-bridge-body-*")); len(left) != 0 {
+		t.Fatalf("spooled anyway: %v", left)
+	}
+	rr = httptest.NewRecorder()
+	h(rr, signedReq("POST", "/docker/volume/v/import", strings.Repeat("t", 10), now(), freshNonce()))
+	if rr.Code != 200 || !called {
+		t.Fatalf("import that fits: code=%d called=%v", rr.Code, called)
+	}
 }

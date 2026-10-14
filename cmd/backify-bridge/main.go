@@ -79,6 +79,10 @@ func cmdEnroll(args []string) {
 	}
 
 	cfg := &config.Config{APIURL: *url, AgentID: agentID, HMACSecret: secret}
+	// Re-enrolling keeps the operator's local Docker allowlist.
+	if old, err := config.Load(config.Path()); err == nil {
+		cfg.Docker = old.Docker
+	}
 	if err := config.Save(config.Path(), cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "failed to save the config:", err)
 		os.Exit(1)

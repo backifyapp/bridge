@@ -1,7 +1,9 @@
 // mock-cp is a FAKE control plane for the simulation only: it answers enroll and
 // heartbeat with a fixed config pointing the tunnel at the sim's chisel-server.
 // It ignores the HMAC signature (the real backend validates it; here we only
-// prove the transport works).
+// prove the transport works). The chisel password in sim/authfile/users.json
+// is sign.ChiselPassword("sim-secret") — the Bridge never sends the secret
+// itself to chisel (0.5.0+).
 package main
 
 import (

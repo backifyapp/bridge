@@ -1,16 +1,11 @@
 package sign
 
-import (
-	"bytes"
-	"net/http"
-	"net/http/httptest"
-	"testing"
-)
+import "testing"
 
 // Agent → API protocol-2 vector shared with the backend (prhost/backify,
-// apps/api/src/auth/agent.test.ts, "vetor compartilhado com o Go"). If either
-// side changes the canonical string, both tests break — and the heartbeat
-// stops authenticating.
+// apps/api/src/auth/agent.test.ts, "vetor compartilhado com o Go"). The Bridge
+// no longer signs with protocol 2 (0.5.0+ uses protocol 3), but the API still
+// accepts it during the transition, so the vector stays pinned on both sides.
 func TestSignatureAPIV2SharedVector(t *testing.T) {
 	body := `{"version":"0.4.0","hostname":"srv-01"}`
 	bodyHash := sha256Hex(body)
@@ -33,8 +28,8 @@ func TestCanonicalStringAPIV2Layout(t *testing.T) {
 	}
 }
 
-// The agent's secret signs both channels (agent → API and worker → helper).
-// A signature from one must never be valid on the other, nor as protocol 1.
+// Protocol 2 used the same secret on both channels: a signature from one must
+// never be valid on the other, nor as protocol 1.
 func TestAPIV2NeverCollidesWithHelperV2OrV1(t *testing.T) {
 	h := sha256Hex("x")
 	api := SignatureAPIV2("k", "POST", "/p", "", "1", "n", h)
@@ -43,40 +38,5 @@ func TestAPIV2NeverCollidesWithHelperV2OrV1(t *testing.T) {
 	}
 	if api == Signature("k", "POST", "/p", "1", "n") {
 		t.Fatal("agent → API v2 and v1 signatures collide")
-	}
-}
-
-func TestRequestAPIV2SignsBodyPathAndQuery(t *testing.T) {
-	body := []byte(`{"version":"0.4.0"}`)
-	req := httptest.NewRequest(http.MethodPost, "https://srv.backify.app/api/agents/heartbeat?x=1", bytes.NewReader(body))
-	if err := RequestAPIV2(req, "agent-1", "segredo", body); err != nil {
-		t.Fatal(err)
-	}
-	ts, nonce := req.Header.Get(HeaderTimestamp), req.Header.Get(HeaderNonce)
-	if req.Header.Get(HeaderAgentID) != "agent-1" || ts == "" || len(nonce) != 32 {
-		t.Fatalf("headers incompletos: %v", req.Header)
-	}
-	if got := req.Header.Get(HeaderContentSHA256); got != sha256Hex(string(body)) {
-		t.Fatalf("content hash=%s", got)
-	}
-	want := SignatureAPIV2("segredo", "POST", "/api/agents/heartbeat", "x=1", ts, nonce, sha256Hex(string(body)))
-	if got := req.Header.Get(HeaderSignature); got != want {
-		t.Fatalf("signature=%s want=%s", got, want)
-	}
-
-	// Another body → another signature (the body is in the HMAC).
-	other := SignatureAPIV2("segredo", "POST", "/api/agents/heartbeat", "x=1", ts, nonce, sha256Hex(`{"version":"9.9.9"}`))
-	if other == want {
-		t.Fatal("signature does not depend on the body")
-	}
-}
-
-func TestRequestAPIV2NilBodyIsEmptyHash(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "https://srv.backify.app/api/agents/config", nil)
-	if err := RequestAPIV2(req, "a", "k", nil); err != nil {
-		t.Fatal(err)
-	}
-	if got := req.Header.Get(HeaderContentSHA256); got != EmptySHA256 {
-		t.Fatalf("content hash=%s want empty-string digest", got)
 	}
 }

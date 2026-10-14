@@ -9,15 +9,22 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/backifyapp/bridge/internal/docker"
 )
 
 const defaultPath = "/etc/backify-bridge/bridge.json"
 
 // Config is the agent's persisted identity.
 type Config struct {
-	APIURL     string `json:"apiUrl"`
-	AgentID    string `json:"agentId"`
+	APIURL  string `json:"apiUrl"`
+	AgentID string `json:"agentId"`
+	// HMACSecret is the enroll secret. Since 0.5.0 it is only the ROOT: the
+	// tunnel password and the API/helper keys are derived from it (internal/sign).
 	HMACSecret string `json:"hmacSecret"`
+	// Docker is the optional local allowlist for docker mode (see
+	// docker.Policy). Written by the operator, never by Backify.
+	Docker *docker.Policy `json:"docker,omitempty"`
 }
 
 // Path devolve o caminho do config (override por BACKIFY_BRIDGE_CONFIG).

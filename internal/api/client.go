@@ -1,6 +1,7 @@
 // Package api talks to the Backify API: enroll (trading the enrollment token)
-// and heartbeat (HMAC-signed, protocol 2: the body is in the signature). It honors the backend's { data } / { error }
-// envelope.
+// and heartbeat (HMAC-signed, protocol 3: the body is in the signature and the
+// key is APIKey, derived from the enroll secret). It honors the backend's
+// { data } / { error } envelope.
 package api
 
 import (
@@ -54,28 +55,29 @@ type envelope struct {
 type Client struct {
 	baseURL string
 	agentID string
-	secret  string
+	apiKey  string // sign.APIKey(secret): the enroll secret itself never signs
 	http    *http.Client
 }
 
-// New creates a client already carrying the agent's identity.
+// New creates a client already carrying the agent's identity. secret is the
+// enroll secret; the client keeps only the key derived for this channel.
 func New(baseURL, agentID, secret string) *Client {
 	return &Client{
 		baseURL: baseURL,
 		agentID: agentID,
-		secret:  secret,
+		apiKey:  sign.APIKey(secret),
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // ErrAPIOutdated means the API refused a signed call and does not announce
-// signature protocol 2: it predates this Bridge (0.4.0+), which no longer
-// signs with protocol 1. Retrying won't help until Backify is updated.
-var ErrAPIOutdated = errors.New("a API do Backify recusou a assinatura e não anuncia o protocolo 2 (X-Backify-Protocol): ela é anterior a esta versão do Bridge")
+// signature protocol 3: it predates this Bridge (0.5.0+), which signs only
+// with the per-channel keys. Retrying won't help until Backify is updated.
+var ErrAPIOutdated = errors.New("a API do Backify recusou a assinatura e não anuncia o protocolo 3 (X-Backify-Protocol): ela é anterior a esta versão do Bridge")
 
 // do performs the request and unmarshals `data` into out (or returns the API
 // error). signed marks an HMAC-signed call, where a 401 without
-// X-Backify-Protocol means an API older than protocol 2.
+// X-Backify-Protocol >= 3 means an API older than protocol 3.
 func do(hc *http.Client, req *http.Request, out any, signed bool) error {
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -103,7 +105,7 @@ func do(hc *http.Client, req *http.Request, out any, signed bool) error {
 	return nil
 }
 
-// speaksProtocol reports whether the API announced signature protocol >= 2.
+// speaksProtocol reports whether the API announced signature protocol >= 3.
 func speaksProtocol(h http.Header) bool {
 	n, err := strconv.Atoi(strings.TrimSpace(h.Get(sign.HeaderProtocol)))
 	return err == nil && n >= sign.APIProtocol
@@ -141,9 +143,10 @@ func (c *Client) Heartbeat(ctx context.Context, version, hostname string, system
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// Protocol 2: the body hash is in the signature, so the API rejects a
-	// heartbeat whose reported state was changed in transit.
-	if err := sign.RequestAPIV2(req, c.agentID, c.secret, payload); err != nil {
+	// Protocol 3: the body hash is in the signature (the API rejects a heartbeat
+	// whose reported state was changed in transit) and the key is the one
+	// derived for this channel.
+	if err := sign.RequestAPIV3(req, c.agentID, c.apiKey, payload); err != nil {
 		return nil, err
 	}
 

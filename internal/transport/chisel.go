@@ -12,16 +12,19 @@ import (
 	chclient "github.com/jpillora/chisel/client"
 
 	"github.com/backifyapp/bridge/internal/api"
+	"github.com/backifyapp/bridge/internal/sign"
 )
 
 // ChiselTransport keeps a Chisel client (TCP over HTTPS, SSH crypto) that opens
 // reverse tunnels: Backify's chisel-server can then reach the customer's local
 // services. The connection config (server/fingerprint) arrives in the heartbeat
-// and may rotate; auth reuses the agent identity (agentID:secret), validated on
-// the server by a plugin against the Backify API (no new secret).
+// and may rotate. Auth is agentID:ChiselPassword(secret): the password is a key
+// derived for this channel only (sign.ChiselPassword), because the chisel-server
+// keeps it in clear in its users.json. Up to 0.4.0 that file held the enroll
+// secret itself, which also signed the API and Docker helper calls.
 type ChiselTransport struct {
-	agentID string
-	secret  string
+	agentID  string
+	password string // sign.ChiselPassword(secret), never the secret itself
 
 	mu      sync.Mutex
 	client  *chclient.Client
@@ -29,9 +32,13 @@ type ChiselTransport struct {
 }
 
 // NewChisel creates the transport with the agent identity (for tunnel auth).
+// secret is the enroll secret; only the derived chisel password is kept.
 func NewChisel(agentID, secret string) *ChiselTransport {
-	return &ChiselTransport{agentID: agentID, secret: secret}
+	return &ChiselTransport{agentID: agentID, password: sign.ChiselPassword(secret)}
 }
+
+// authString is what chisel sends as the tunnel credential.
+func (t *ChiselTransport) authString() string { return t.agentID + ":" + t.password }
 
 // buildRemotes translates the authorized services into Chisel reverse remotes:
 //
@@ -136,7 +143,7 @@ func (t *ChiselTransport) Sync(ctx context.Context, cfg *api.AgentConfig) error 
 	cl, err := chclient.NewClient(&chclient.Config{
 		Server:           server,
 		Fingerprint:      cfg.Tunnel.Fingerprint,
-		Auth:             t.agentID + ":" + t.secret,
+		Auth:             t.authString(),
 		Remotes:          remotes,
 		KeepAlive:        25 * time.Second,
 		MaxRetryCount:    -1,

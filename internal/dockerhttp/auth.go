@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -56,21 +57,47 @@ func (c *nonceCache) consume(nonce string, now int64) bool {
 	return true
 }
 
-// authMiddleware verifies signature protocol 2 (see sign.CanonicalStringV2).
+// bodyRule caps what a route may spool before the signature of its body is
+// checked. Without a cap, a signed request could fill $TMPDIR (and the disk
+// it lives on) before anything looked at it.
+type bodyRule struct {
+	// max is the fixed ceiling in bytes (0 = no body).
+	max int64
+	// disk: the ceiling is the free space in os.TempDir() minus diskReserve
+	// instead, and Content-Length is mandatory (the volume import, which can
+	// be large but must never exhaust the disk).
+	disk bool
+}
+
+var (
+	noBody      = bodyRule{}
+	jsonBody    = bodyRule{max: 1 << 20}
+	archiveBody = bodyRule{disk: true}
+)
+
+// diskReserve is left free on the temp filesystem when spooling an import.
+const diskReserve = 256 << 20
+
+// freeSpace reports the bytes available to an unprivileged writer in dir
+// (ok=false when unknown: the check is skipped, the fixed caps still apply).
+var freeSpace = diskFree
+
+// authMiddleware verifies signature protocol 3 (see sign.CanonicalStringV3):
+// key is sign.HelperKey(secret), never the enroll secret itself.
 //
 // Order — nothing is stored and no body byte is acted on before the signature
 // checks out:
-//  1. headers present and well-formed; v1 requests (no body hash) get a clear
-//     "protocol 1 refused" error;
+//  1. headers present and well-formed; protocol-1 (no body hash) and
+//     protocol-2 (enroll secret) requests get a clear "update the worker" error;
 //  2. ±300s clock window;
 //  3. HMAC over method, escaped path, raw query, ts, nonce and the body hash
 //     (constant-time compare);
 //  4. only then the nonce is burned;
-//  5. a request body is spooled to a temp file while hashed, and handed to
-//     the handler only if the hash matches the signed one. The import used to
-//     stream straight into `tar -x`, so a tampered body was applied before
-//     anyone could notice.
-func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.HandlerFunc {
+//  5. a request body is size-checked (rule), spooled to a temp file while
+//     hashed, and handed to the handler only if the hash matches the signed
+//     one. The import used to stream straight into `tar -x`, so a tampered
+//     body was applied before anyone could notice.
+func authMiddleware(key string, nc *nonceCache, rule bodyRule, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(sign.HeaderProtocol, strconv.Itoa(sign.HelperProtocol))
 
@@ -83,7 +110,11 @@ func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.H
 			return
 		}
 		if claim == "" {
-			http.Error(w, "protocolo de assinatura 1 recusado: este Bridge exige o protocolo 2 (o worker do Backify precisa ser atualizado)", http.StatusUnauthorized)
+			http.Error(w, "protocolo de assinatura 1 recusado: este Bridge exige o protocolo 3 (o worker do Backify precisa ser atualizado)", http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get(sign.HeaderProtocol) != strconv.Itoa(sign.HelperProtocol) {
+			http.Error(w, "protocolo de assinatura 2 recusado: este Bridge (0.5.0+) só aceita o protocolo 3, assinado com a chave do helper derivada do segredo (o worker do Backify precisa ser atualizado)", http.StatusUnauthorized)
 			return
 		}
 		if !tsRe.MatchString(ts) || !nonceRe.MatchString(nonce) || !hexRe.MatchString(gotSig) || !hexRe.MatchString(claim) {
@@ -102,7 +133,7 @@ func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.H
 		if hasBody {
 			bodyHash = claim
 		}
-		want := sign.SignatureV2(secret, r.Method, r.URL.EscapedPath(), r.URL.RawQuery, ts, nonce, bodyHash)
+		want := sign.SignatureV3(key, r.Method, r.URL.EscapedPath(), r.URL.RawQuery, ts, nonce, bodyHash)
 		if !hmac.Equal([]byte(want), []byte(gotSig)) {
 			http.Error(w, "invalid signature", http.StatusUnauthorized)
 			return
@@ -113,12 +144,21 @@ func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.H
 		}
 
 		if hasBody {
-			body, cleanup, err := spoolVerified(r.Body, claim)
-			if errors.Is(err, errBodyMismatch) {
-				http.Error(w, "o corpo recebido não confere com o assinado", http.StatusBadRequest)
+			limit, status, msg := bodyLimit(r, rule)
+			if status != 0 {
+				http.Error(w, msg, status)
 				return
 			}
-			if err != nil {
+			body, cleanup, err := spoolVerified(http.MaxBytesReader(w, r.Body, limit), claim)
+			var tooLarge *http.MaxBytesError
+			switch {
+			case errors.As(err, &tooLarge):
+				http.Error(w, "corpo maior que o permitido para esta rota", http.StatusRequestEntityTooLarge)
+				return
+			case errors.Is(err, errBodyMismatch):
+				http.Error(w, "o corpo recebido não confere com o assinado", http.StatusBadRequest)
+				return
+			case err != nil:
 				http.Error(w, "falha ao receber o corpo: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -127,6 +167,28 @@ func authMiddleware(secret string, nc *nonceCache, next http.HandlerFunc) http.H
 		}
 		next(w, r)
 	}
+}
+
+// bodyLimit returns the byte ceiling for this request's body, or a non-zero
+// status (and message) when it must be refused before reading anything.
+func bodyLimit(r *http.Request, rule bodyRule) (int64, int, string) {
+	if !rule.disk {
+		if r.ContentLength > rule.max {
+			return 0, http.StatusRequestEntityTooLarge, "corpo maior que o permitido para esta rota"
+		}
+		return rule.max, 0, ""
+	}
+	if r.ContentLength < 0 {
+		return 0, http.StatusLengthRequired, "Content-Length obrigatório no import"
+	}
+	if free, ok := freeSpace(os.TempDir()); ok {
+		if free < diskReserve || uint64(r.ContentLength) > free-diskReserve {
+			return 0, http.StatusInsufficientStorage, fmt.Sprintf(
+				"espaço insuficiente em %s para conferir o arquivo (%d bytes; livres %d, reserva %d)",
+				os.TempDir(), r.ContentLength, free, diskReserve)
+		}
+	}
+	return r.ContentLength, 0, ""
 }
 
 // spoolVerified copies the body to a temp file (os.TempDir — $TMPDIR, a
