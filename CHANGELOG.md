@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 Requires a Backify backend that speaks protocol 3 (deploy
 the backend first; it keeps accepting older Bridges during the transition).
 
+**No downgrade after the first protocol 3 call.** On its first protocol 3
+heartbeat the backend stores the three per-channel keys and **deletes the
+enroll secret**. Bridge 0.4.x signs with that secret, so putting it back on
+the host gets 401 on every call and the tunnel stops. To roll back a host,
+use **Reinstall** in the dashboard and enroll again with the older binary.
+
 ### Security
 - **One key per channel (protocol 3).** Up to 0.4.0 the enroll secret was used
   as is for three things: the chisel password (stored in clear in the
