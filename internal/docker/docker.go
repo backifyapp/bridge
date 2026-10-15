@@ -6,6 +6,7 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -31,12 +32,14 @@ type Container struct {
 // RunSpec is the minimal config to recreate a container on restore. The worker
 // derives it from the `docker inspect` stored in the backup.
 type RunSpec struct {
-	Name          string   `json:"name"`
-	Image         string   `json:"image"`
-	Env           []string `json:"env"`           // "KEY=value"
-	Ports         []string `json:"ports"`         // "hostPort:containerPort"
-	Volumes       []string `json:"volumes"`       // "volName:/path[:ro]"
-	RestartPolicy string   `json:"restartPolicy"` // e.g. "unless-stopped"
+	Name    string   `json:"name"`
+	Image   string   `json:"image"`
+	Env     []string `json:"env"`     // "KEY=value"
+	Volumes []string `json:"volumes"` // "volName:/path[:ro]"
+	// Ports and RestartPolicy are kept so older workers' specs still decode,
+	// but ValidateRunSpec refuses any value (see there).
+	Ports         []string `json:"ports"`
+	RestartPolicy string   `json:"restartPolicy"`
 }
 
 // ── Pure functions (testable) ───────────────────────────────────────────────
@@ -84,19 +87,21 @@ func importVolumeArgs(volume string) []string {
 	return []string{"run", "--rm", "-i", "-v", volume + ":/data", helperImage, "tar", "-C", "/data", "-xzf", "-"}
 }
 
-func runContainerArgs(s RunSpec) []string {
-	args := []string{"run", "-d"}
+// runContainerArgs builds the restore `docker run`. allowPull=false (the
+// default, no local image allowlist) means --pull=never: the image must already
+// be on this host, so a signed request cannot make it download and run an
+// arbitrary image. Ports and restart policy never get here (ValidateRunSpec).
+func runContainerArgs(s RunSpec, allowPull bool) []string {
+	pull := "--pull=never"
+	if allowPull {
+		pull = "--pull=missing"
+	}
+	args := []string{"run", "-d", pull}
 	if s.Name != "" {
 		args = append(args, "--name", s.Name)
 	}
-	if s.RestartPolicy != "" {
-		args = append(args, "--restart", s.RestartPolicy)
-	}
 	for _, e := range s.Env {
 		args = append(args, "-e", e)
-	}
-	for _, p := range s.Ports {
-		args = append(args, "-p", p)
 	}
 	for _, v := range s.Volumes {
 		args = append(args, "-v", v)
@@ -169,16 +174,57 @@ func ListContainers(ctx context.Context) ([]Container, error) {
 	return parseContainerList(out), nil
 }
 
-// ExportVolume tara o volume (:ro) e escreve o tar.gz no writer (stream, sem disco).
+// ExportVolume tara o volume (:ro) e escreve o tar.gz no writer (stream, sem
+// disco). The error wraps the *exec.ExitError (see ExitCode): the helper turns
+// it into the X-Backify-Exit-Code trailer, because by then the 200 and part of
+// the archive may already be on the wire.
 func ExportVolume(ctx context.Context, volume string, w io.Writer) error {
 	cmd := exec.CommandContext(ctx, "docker", exportVolumeArgs(volume)...)
 	cmd.Stdout = w
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("export volume %s: %v: %s", volume, err, stderr.String())
+		return fmt.Errorf("export volume %s: %w: %s", volume, err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+// ExitCode is the process exit status behind err: 0 for nil, the code of an
+// *exec.ExitError, -1 for anything else (the process did not even run).
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if c := ee.ExitCode(); c != 0 {
+			return c
+		}
+	}
+	return -1
+}
+
+// VolumeExists reports whether the named volume exists. Export and size must
+// check it: `docker run -v <name>:/data` CREATES a missing volume, so a
+// mistyped or deleted volume used to be backed up as an empty archive.
+func VolumeExists(ctx context.Context, volume string) bool {
+	_, err := run(ctx, "volume", "inspect", "--format", "{{.Name}}", volume)
+	return err == nil
+}
+
+// ImageExists reports whether the image is present on this host.
+func ImageExists(ctx context.Context, image string) bool {
+	_, err := run(ctx, "image", "inspect", "--format", "{{.Id}}", image)
+	return err == nil
+}
+
+// ContainerName resolves a container id/name to its name (no leading "/").
+func ContainerName(ctx context.Context, id string) string {
+	out, err := run(ctx, "inspect", "--format", "{{.Name}}", id)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimSpace(out), "/")
 }
 
 // ImportVolume cria o volume (idempotente) e destara o stream dentro dele.
@@ -206,8 +252,9 @@ func InspectContainer(ctx context.Context, id string) (json.RawMessage, error) {
 }
 
 // RunContainer recreates a container from the minimal spec; returns its id.
-func RunContainer(ctx context.Context, s RunSpec) (string, error) {
-	out, err := run(ctx, runContainerArgs(s)...)
+// allowPull: see runContainerArgs.
+func RunContainer(ctx context.Context, s RunSpec, allowPull bool) (string, error) {
+	out, err := run(ctx, runContainerArgs(s, allowPull)...)
 	if err != nil {
 		return "", err
 	}

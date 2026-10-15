@@ -1,6 +1,12 @@
 package docker
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"os/exec"
+	"strings"
+	"testing"
+)
 
 func TestParseVolumeList(t *testing.T) {
 	got := parseVolumeList("pgdata\n\n  redisdata \n")
@@ -35,20 +41,36 @@ func TestExportImportArgs(t *testing.T) {
 
 func TestRunContainerArgs(t *testing.T) {
 	args := runContainerArgs(RunSpec{
-		Name: "web", Image: "nginx:1", RestartPolicy: "unless-stopped",
-		Env: []string{"A=1"}, Ports: []string{"8080:80"}, Volumes: []string{"v:/data"},
-	})
-	joined := ""
-	for _, a := range args {
-		joined += a + " "
-	}
-	for _, want := range []string{"run -d", "--name web", "--restart unless-stopped", "-e A=1", "-p 8080:80", "-v v:/data"} {
+		Name: "web", Image: "nginx:1", Env: []string{"A=1"}, Volumes: []string{"v:/data"},
+	}, false)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"run -d --pull=never", "--name web", "-e A=1", "-v v:/data"} {
 		if !contains(joined, want) {
 			t.Fatalf("faltou %q em: %s", want, joined)
 		}
 	}
 	if args[len(args)-1] != "nginx:1" {
 		t.Fatalf("the image must be the last arg: %v", args)
+	}
+	// Even if a spec carried them, ports and restart policy never become flags
+	// (ValidateRunSpec refuses them before this point).
+	args = runContainerArgs(RunSpec{Image: "nginx:1", Ports: []string{"8080:80"}, RestartPolicy: "always"}, true)
+	joined = strings.Join(args, " ")
+	if contains(joined, " -p ") || contains(joined, "--restart") || !contains(joined, "--pull=missing") {
+		t.Fatalf("args=%s", joined)
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	if ExitCode(nil) != 0 {
+		t.Fatal("nil error must be exit 0")
+	}
+	if ExitCode(errors.New("x")) != -1 {
+		t.Fatal("a non-exec error must be -1")
+	}
+	err := exec.Command("sh", "-c", "exit 3").Run()
+	if got := ExitCode(fmt.Errorf("wrapped: %w", err)); got != 3 {
+		t.Fatalf("ExitCode=%d want 3", got)
 	}
 }
 

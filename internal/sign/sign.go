@@ -1,14 +1,19 @@
 // Package sign implements the HMAC-SHA256 signatures between the Bridge and
-// Backify. The secret NEVER travels: it only signs a canonical string. Two
-// channels use the agent's secret, each with its own protocol-2 scheme line:
+// Backify. The secret NEVER travels: it only signs a canonical string.
 //
-//   - agent → API (heartbeat): SchemeAPIV2, see RequestAPIV2. Mirrors the
-//     backend verifier (apps/api/src/auth/agent.ts in prhost/backify).
-//   - worker → local Docker helper: SchemeV2, verified in internal/dockerhttp.
+// Protocol 3 (Bridge ≥ 0.5.0) gives each channel its own key, derived from the
+// enroll secret with HKDF (see keys.go), and its own scheme line:
 //
-// Protocol 1 (METHOD\nPATH\nTIMESTAMP\nNONCE) did not cover the body. The
-// Bridge no longer sends it; CanonicalString/Signature stay only to pin the
-// backend vector and the v1/v2 separation in tests.
+//   - agent → API (heartbeat): SchemeAPIV3 with APIKey, see RequestAPIV3.
+//     Mirrors the backend verifier (apps/api/src/auth/agent.ts in prhost/backify).
+//   - worker → local Docker helper: SchemeV3 with HelperKey, verified in
+//     internal/dockerhttp.
+//   - chisel tunnel: ChiselPassword (not a signature: chisel's own auth).
+//
+// Protocol 2 used the enroll secret itself on all three channels, and
+// protocol 1 (METHOD\nPATH\nTIMESTAMP\nNONCE) did not even cover the body. The
+// Bridge sends neither anymore; their functions stay only to pin the backend
+// vectors and the separation between protocols in tests.
 package sign
 
 import (
@@ -53,10 +58,15 @@ const (
 	HeaderContentSHA256 = "X-Backify-Content-SHA256"
 	// HeaderProtocol is set on every helper response (401s included), so the
 	// worker can tell "outdated agent" from "wrong secret". The API sets it on
-	// its responses to the agent too (see APIProtocol).
+	// its responses to the agent too (see APIProtocol). Since protocol 3 the
+	// REQUESTS carry it as well (worker → helper and agent → API): it says
+	// which key signed them.
 	HeaderProtocol = "X-Backify-Protocol"
-	HelperProtocol = 2
+	// HelperProtocol is the only protocol the helper accepts: 3, signed with
+	// HelperKey (protocol 2 used the enroll secret itself).
+	HelperProtocol = 3
 	SchemeV2       = "BACKIFY-BRIDGE-HMAC-SHA256-V2"
+	SchemeV3       = "BACKIFY-BRIDGE-HMAC-SHA256-V3"
 	EmptySHA256    = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 )
 
@@ -74,10 +84,15 @@ const (
 // the body, checks it against the signed hash and only then burns the nonce.
 // It answers with X-Backify-Protocol: 2. TestSignatureAPIV2SharedVector pins
 // this to apps/api/src/auth/agent.test.ts in prhost/backify.
+//
+// Protocol 3 keeps the layout and changes the key (APIKey instead of the
+// enroll secret) and the scheme line; the request says so in
+// X-Backify-Protocol: 3.
 const (
 	SchemeAPIV2 = "BACKIFY-AGENT-API-HMAC-SHA256-V2"
+	SchemeAPIV3 = "BACKIFY-AGENT-API-HMAC-SHA256-V3"
 	// APIProtocol is the signature protocol this Bridge speaks to the API.
-	APIProtocol = 2
+	APIProtocol = 3
 )
 
 func canonicalV2(scheme, method, path, query, timestamp, nonce, bodySHA256 string) string {
@@ -112,6 +127,28 @@ func SignatureAPIV2(secret, method, path, query, timestamp, nonce, bodySHA256 st
 	return hmacHex(secret, CanonicalStringAPIV2(method, path, query, timestamp, nonce, bodySHA256))
 }
 
+// CanonicalStringV3 builds the protocol-3 string the Docker helper verifies.
+func CanonicalStringV3(method, path, query, timestamp, nonce, bodySHA256 string) string {
+	return canonicalV2(SchemeV3, method, path, query, timestamp, nonce, bodySHA256)
+}
+
+// SignatureV3 is the hex HMAC-SHA256 of CanonicalStringV3. key is HelperKey,
+// never the enroll secret.
+func SignatureV3(key, method, path, query, timestamp, nonce, bodySHA256 string) string {
+	return hmacHex(key, CanonicalStringV3(method, path, query, timestamp, nonce, bodySHA256))
+}
+
+// CanonicalStringAPIV3 builds the protocol-3 string for agent → API calls.
+func CanonicalStringAPIV3(method, path, query, timestamp, nonce, bodySHA256 string) string {
+	return canonicalV2(SchemeAPIV3, method, path, query, timestamp, nonce, bodySHA256)
+}
+
+// SignatureAPIV3 is the hex HMAC-SHA256 of CanonicalStringAPIV3. key is
+// APIKey, never the enroll secret.
+func SignatureAPIV3(key, method, path, query, timestamp, nonce, bodySHA256 string) string {
+	return hmacHex(key, CanonicalStringAPIV3(method, path, query, timestamp, nonce, bodySHA256))
+}
+
 // Signature is the hex HMAC-SHA256 of the protocol-1 string.
 func Signature(secret, method, path, timestamp, nonce string) string {
 	return hmacHex(secret, CanonicalString(method, path, timestamp, nonce))
@@ -126,11 +163,12 @@ func Nonce() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// RequestAPIV2 signs an agent → API request in place (protocol 2). body must
-// be exactly the bytes the request sends (nil = empty body); its SHA-256 goes
-// into the signature and into X-Backify-Content-SHA256. PATH is the escaped
-// request path and QUERY the raw query, as the API receives them.
-func RequestAPIV2(req *http.Request, agentID, secret string, body []byte) error {
+// RequestAPIV3 signs an agent → API request in place (protocol 3). apiKey is
+// APIKey(secret) — the enroll secret itself never signs anything. body must be
+// exactly the bytes the request sends (nil = empty body); its SHA-256 goes into
+// the signature and into X-Backify-Content-SHA256. PATH is the escaped request
+// path and QUERY the raw query, as the API receives them.
+func RequestAPIV3(req *http.Request, agentID, apiKey string, body []byte) error {
 	nonce, err := Nonce()
 	if err != nil {
 		return err
@@ -138,11 +176,12 @@ func RequestAPIV2(req *http.Request, agentID, secret string, body []byte) error 
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	sum := sha256.Sum256(body)
 	bodyHash := hex.EncodeToString(sum[:])
-	sig := SignatureAPIV2(secret, req.Method, req.URL.EscapedPath(), req.URL.RawQuery, ts, nonce, bodyHash)
+	sig := SignatureAPIV3(apiKey, req.Method, req.URL.EscapedPath(), req.URL.RawQuery, ts, nonce, bodyHash)
 	req.Header.Set(HeaderAgentID, agentID)
 	req.Header.Set(HeaderTimestamp, ts)
 	req.Header.Set(HeaderNonce, nonce)
 	req.Header.Set(HeaderContentSHA256, bodyHash)
+	req.Header.Set(HeaderProtocol, strconv.Itoa(APIProtocol))
 	req.Header.Set(HeaderSignature, sig)
 	return nil
 }

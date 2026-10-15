@@ -90,10 +90,33 @@ if [ "$OS" != "linux" ]; then
   exit 1
 fi
 
-echo "==> downloading backify-bridge ($OS/$ARCH)…"
-URL="https://github.com/${REPO}/releases/latest/download/backify-bridge_${OS}_${ARCH}"
-curl -fsSL "$URL" -o "$BIN"
-chmod +x "$BIN"
+# Resolve the latest tag once and download everything from THAT tag:
+# "latest/download" twice could hit two different releases.
+TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | sed 's|.*/tag/||')
+case "$TAG" in
+  v[0-9]*.[0-9]*.[0-9]*) ;;
+  *) echo "could not resolve the latest release tag (got: $TAG)" >&2; exit 1 ;;
+esac
+ASSET="backify-bridge_${OS}_${ARCH}"
+URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
+TMPBIN=$(mktemp)
+trap 'rm -f "$TMPBIN"' EXIT
+
+echo "==> downloading backify-bridge ${TAG} ($OS/$ARCH)…"
+curl -fsSL "$URL" -o "$TMPBIN"
+# Integrity (not authenticity — see SECURITY.md): the checksum published
+# with the release must match before anything is installed.
+WANT=$(curl -fsSL "${URL}.sha256" | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+  GOT=$(sha256sum "$TMPBIN" | awk '{print $1}')
+else
+  GOT=$(shasum -a 256 "$TMPBIN" | awk '{print $1}')
+fi
+if [ -z "$WANT" ] || [ "$WANT" != "$GOT" ]; then
+  echo "checksum mismatch for ${ASSET} ${TAG} (expected ${WANT:-?}, got ${GOT})" >&2
+  exit 1
+fi
+install -m 0755 "$TMPBIN" "$BIN"
 
 echo "==> creating dedicated user backify-bridge…"
 id backify-bridge >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin backify-bridge

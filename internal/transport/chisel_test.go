@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/backifyapp/bridge/internal/api"
+	"github.com/backifyapp/bridge/internal/sign"
 )
 
 func TestBuildRemotesFormatsAndSkips(t *testing.T) {
@@ -61,5 +62,19 @@ func TestNormalizeServer(t *testing.T) {
 		if got := normalizeServer(in); got != want {
 			t.Errorf("normalizeServer(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// users.json on the chisel-server holds the password in clear. It must be the
+// key derived for the tunnel, never the enroll secret (which used to sign the
+// API and Docker helper calls too).
+func TestChiselAuthUsesTheDerivedPassword(t *testing.T) {
+	tr := NewChisel("agent-1", "chave-hmac-do-agent-de-teste")
+	const want = "agent-1:4946d480dabb80c77898bc6ec0a0eacc0048429414070fa2bd4db5d058b44ab8"
+	if got := tr.authString(); got != want {
+		t.Fatalf("auth=%q want=%q", got, want)
+	}
+	if tr.password == "chave-hmac-do-agent-de-teste" || tr.password != sign.ChiselPassword("chave-hmac-do-agent-de-teste") {
+		t.Fatal("the transport kept the enroll secret")
 	}
 }
