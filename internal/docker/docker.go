@@ -111,10 +111,70 @@ func runContainerArgs(s RunSpec, allowPull bool) []string {
 
 // ── Casca de exec ────────────────────────────────────────────────────────────
 
+// redactedValue replaces an environment variable value in error messages.
+const redactedValue = "***"
+
+// displayArgs is the docker command line as it may appear in an error: every
+// environment variable keeps its NAME and loses its VALUE ("-e KEY=***").
+//
+// The error of a failed `docker run` goes back to the worker in the HTTP
+// response, and from there to the restore log the customer sees. Up to 0.5.0
+// it carried the whole command — `-e MYSQL_ROOT_PASSWORD=<value>` included.
+func displayArgs(args []string) string {
+	out := make([]string, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case (a == "-e" || a == "--env") && i+1 < len(args):
+			out[i] = a
+			i++
+			out[i] = redactAssignment(args[i])
+		case strings.HasPrefix(a, "--env="):
+			out[i] = "--env=" + redactAssignment(strings.TrimPrefix(a, "--env="))
+		case strings.HasPrefix(a, "-e") && len(a) > 2 && strings.Contains(a, "="):
+			out[i] = "-e" + redactAssignment(a[2:])
+		default:
+			out[i] = a
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// redactAssignment turns "KEY=value" into "KEY=***" (and a bare "KEY", which
+// docker reads from its own environment, stays as is).
+func redactAssignment(kv string) string {
+	name, _, hasValue := strings.Cut(kv, "=")
+	if !hasValue {
+		return kv
+	}
+	return name + "=" + redactedValue
+}
+
+// redactValues hides the given values in docker's own output. Defense in
+// depth: docker does not echo valid -e values today, but an error message that
+// quoted one would otherwise travel as is. Values shorter than 4 bytes are
+// left alone — replacing "1" or "UTC" everywhere would only garble the text.
+func redactValues(text string, env []string) string {
+	for _, kv := range env {
+		_, v, ok := strings.Cut(kv, "=")
+		if ok && len(v) >= 4 {
+			text = strings.ReplaceAll(text, v, redactedValue)
+		}
+	}
+	return text
+}
+
 func run(ctx context.Context, args ...string) (string, error) {
+	return runRedacting(ctx, nil, args...)
+}
+
+// runRedacting runs docker and, on failure, returns an error that never
+// carries an environment variable value: not from the command line
+// (displayArgs) and not from docker's output (redactValues over env).
+func runRedacting(ctx context.Context, env []string, args ...string) (string, error) {
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("docker %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("docker %s: %v: %s", displayArgs(args), err, redactValues(strings.TrimSpace(string(out)), env))
 	}
 	return string(out), nil
 }
@@ -254,7 +314,7 @@ func InspectContainer(ctx context.Context, id string) (json.RawMessage, error) {
 // RunContainer recreates a container from the minimal spec; returns its id.
 // allowPull: see runContainerArgs.
 func RunContainer(ctx context.Context, s RunSpec, allowPull bool) (string, error) {
-	out, err := run(ctx, runContainerArgs(s, allowPull)...)
+	out, err := runRedacting(ctx, s.Env, runContainerArgs(s, allowPull)...)
 	if err != nil {
 		return "", err
 	}
