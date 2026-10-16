@@ -123,8 +123,15 @@ id backify-bridge >/dev/null 2>&1 || useradd --system --no-create-home --shell /
 install -d -o backify-bridge -g backify-bridge -m 0700 "$CONFIG_DIR"
 
 echo "==> installing systemd service…"
-curl -fsSL "https://raw.githubusercontent.com/${REPO}/main/packaging/systemd/backify-bridge.service" \
-  -o "$UNIT"
+# The unit comes from the SAME tag as the binary: from `main` it could be a
+# unit written for a release that is not out yet (or not the one installed),
+# and nothing would check that it matches. Downloaded to a temp file first, so
+# a failed download never leaves a truncated unit behind.
+TMPUNIT=$(mktemp)
+trap 'rm -f "$TMPBIN" "$TMPUNIT"' EXIT
+curl -fsSL "https://raw.githubusercontent.com/${REPO}/${TAG}/packaging/systemd/backify-bridge.service" \
+  -o "$TMPUNIT"
+install -m 0644 "$TMPUNIT" "$UNIT"
 
 if [ "$DOCKER" -eq 1 ]; then
   if ! getent group docker >/dev/null 2>&1; then

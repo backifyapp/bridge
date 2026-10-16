@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- **A failed `docker run` no longer returns environment variable values.** The
+  error of the restore's `docker run` (the helper's `POST /docker/container/run`)
+  carried the whole command line, `-e MYSQL_ROOT_PASSWORD=<value>` included,
+  and the backend wrote it into the restore log the customer sees. Errors now
+  keep the variable NAME and hide the value (`-e KEY=***`) — on the command
+  line and, as defense in depth, wherever docker's own output repeats a value
+  (of 4 bytes or more).
+- **`install.sh` installs the systemd unit from the release it installs.** The
+  binary came from the resolved release tag, but the unit came from `main`, so
+  a fresh install could pair a binary with a unit from a different (even
+  unreleased) version. Both now come from the same tag.
+
 ## [0.5.0] — 2026-10-15
 
 Requires a Backify backend that speaks protocol 3 (deploy
