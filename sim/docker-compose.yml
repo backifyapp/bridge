@@ -28,7 +28,7 @@ services:
       context: ./mock-cp
 
   chisel:
-    image: jpillora/chisel:1.11.8
+    image: jpillora/chisel:1.12.1
     command:
       - server
       - --reverse

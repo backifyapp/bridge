@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- **Built with a supported Go and patched `x/crypto`/`x/net`.** Releases were
+  built with Go 1.25, out of support since 2026-08-19, and `govulncheck`
+  reported 12 vulnerabilities reachable from the agent: two SSH denial-of-service
+  bugs in `x/crypto` hit through the chisel tunnel (GO-2026-6354, GO-2026-6355),
+  HTTP/2 denial-of-service bugs in `x/net` and the standard library, and
+  `crypto/tls`/`crypto/x509` fixes. Now Go 1.27 (minimum 1.26), `x/crypto`
+  0.58 and `x/net` 0.62: 0 reachable.
+- **chisel 1.11.8 → 1.12.1**, the version the Backify tunnel server runs. Same
+  protocol (`chisel-v3`); 1.12 is upstream's reliability and security pass.
+  1.13.0 is skipped on purpose: it is a pre-release and adds a SOCKS/UDP
+  dependency the agent does not use.
 - **A failed `docker run` no longer returns environment variable values.** The
   error of the restore's `docker run` (the helper's `POST /docker/container/run`)
   carried the whole command line, `-e MYSQL_ROOT_PASSWORD=<value>` included,
