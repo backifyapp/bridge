@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-02
+
+Same protocol as 0.5.x (protocol 3): no backend change needed. The dashboard
+shows the distribution once the Backify API accepts the new fields (older APIs
+simply drop them).
+
 ### Added
 - **The heartbeat reports the distribution and its version** (`osName`,
   `osVersion`, `osPrettyName`, e.g. `CloudLinux`, `9.7`,
@@ -224,7 +230,8 @@ Backify worker that speaks protocol 2 is deployed.
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/backifyapp/bridge/releases/tag/v0.6.0
 [0.5.1]: https://github.com/backifyapp/bridge/releases/tag/v0.5.1
 [0.5.0]: https://github.com/backifyapp/bridge/releases/tag/v0.5.0
 [0.4.0]: https://github.com/backifyapp/bridge/releases/tag/v0.4.0
