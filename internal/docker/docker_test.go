@@ -101,3 +101,19 @@ func TestParseDuBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestParseHostOS(t *testing.T) {
+	cases := []struct{ in, pretty, version string }{
+		{"CloudLinux 9.6 (Sapphire Caracal)\t9.6\n", "CloudLinux 9.6 (Sapphire Caracal)", "9.6"},
+		{"Ubuntu 24.04.1 LTS\t24.04\n", "Ubuntu 24.04.1 LTS", "24.04"},
+		// Docker Desktop and older daemons may leave OSVersion empty.
+		{"Docker Desktop\t\n", "Docker Desktop", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		p, v := parseHostOS(c.in)
+		if p != c.pretty || v != c.version {
+			t.Errorf("parseHostOS(%q) = %q, %q; want %q, %q", c.in, p, v, c.pretty, c.version)
+		}
+	}
+}

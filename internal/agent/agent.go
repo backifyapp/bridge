@@ -37,11 +37,21 @@ func Run(ctx context.Context, cfg *config.Config, version string, t transport.Tr
 	defer tick.Stop()
 
 	dockerHelperUp := false
+	// In a container, the host OS comes from the host's Docker (asked until it
+	// answers, then kept: the host does not change under a running agent).
+	inContainer := sysinfo.InContainer()
+	var hostOS, hostOSVersion string
 	for {
 		// Fleet inventory (cheap); Docker version only when in docker mode.
 		si := sysinfo.Collect()
 		if dockerHelperUp {
 			si.DockerVersion = docker.Version(ctx)
+		}
+		if inContainer {
+			if hostOS == "" {
+				hostOS, hostOSVersion = hostOSFromDocker(ctx)
+			}
+			si.OSPrettyName, si.OSVersion = hostOS, hostOSVersion
 		}
 		// Heartbeat imediato na 1ª volta, depois no intervalo.
 		if acfg, err := client.Heartbeat(ctx, version, hostname, si); err != nil {
@@ -90,4 +100,12 @@ func findDockerService(services []api.Service) *api.Service {
 		}
 	}
 	return nil
+}
+
+// hostOSFromDocker bounds the `docker info` call: a stuck socket must not hold
+// the heartbeat.
+func hostOSFromDocker(ctx context.Context) (string, string) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return docker.HostOS(ctx)
 }
