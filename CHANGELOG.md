@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The heartbeat reports the distribution and its version** (`osName`,
+  `osVersion`, `osPrettyName`, e.g. `CloudLinux`, `9.7`,
+  `CloudLinux 9.7 (Pavel Popovich)`). The inventory only said `linux`. Read
+  from `/etc/os-release` (falling back to `/usr/lib/os-release`). In the
+  official container image that file describes the image (Alpine), so there
+  the agent asks the host's Docker (`docker info`) instead, and reports nothing
+  rather than the image's OS when Docker does not answer.
+
 ## [0.5.1] — 2026-11-02
 
 Security-only release. Same protocol as 0.5.0 (protocol 3, `chisel-v3`): no

@@ -194,6 +194,24 @@ func Version(ctx context.Context) string {
 	return strings.TrimSpace(out)
 }
 
+// HostOS returns the HOST's distribution as the Docker daemon reports it
+// ("CloudLinux 9.6 (Sapphire Caracal)", "9.6"). It is how a containerised
+// agent learns the host OS — its own /etc/os-release is the image's. Empty
+// when docker does not answer.
+func HostOS(ctx context.Context) (pretty, version string) {
+	out, err := run(ctx, "info", "--format", "{{.OperatingSystem}}\t{{.OSVersion}}")
+	if err != nil {
+		return "", ""
+	}
+	return parseHostOS(out)
+}
+
+// parseHostOS splits the "OperatingSystem\tOSVersion" line. Pure function.
+func parseHostOS(out string) (pretty, version string) {
+	pretty, version, _ = strings.Cut(strings.TrimSpace(out), "\t")
+	return strings.TrimSpace(pretty), strings.TrimSpace(version)
+}
+
 // ListVolumes lista os volumes nomeados.
 func ListVolumes(ctx context.Context) ([]Volume, error) {
 	out, err := run(ctx, "volume", "ls", "--format", "{{.Name}}")
