@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-11-02
+
+Security-only release. Same protocol as 0.5.0 (protocol 3, `chisel-v3`): no
+backend change needed. Building from source now requires Go 1.26 or newer.
+
 ### Security
 - **Built with a supported Go and patched `x/crypto`/`x/net`.** Releases were
   built with Go 1.25, out of support since 2026-08-19, and `govulncheck`
@@ -210,7 +215,8 @@ Backify worker that speaks protocol 2 is deployed.
 - The reverse tunnel now binds to `0.0.0.0` (it was `127.0.0.1`, which made the
   port unreachable from outside the container).
 
-[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/backifyapp/bridge/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/backifyapp/bridge/releases/tag/v0.5.1
 [0.5.0]: https://github.com/backifyapp/bridge/releases/tag/v0.5.0
 [0.4.0]: https://github.com/backifyapp/bridge/releases/tag/v0.4.0
 [0.3.0]: https://github.com/backifyapp/bridge/releases/tag/v0.3.0
